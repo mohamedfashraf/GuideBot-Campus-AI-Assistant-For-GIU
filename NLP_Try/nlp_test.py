@@ -132,7 +132,7 @@ def reset_timer():
     global timer
     if timer is not None:
         timer.cancel()
-    timer = threading.Timer(15, inactivity_timeout)
+    timer = threading.Timer(15, inactivity_timeout) #! timeout to 15 seconds
     timer.start()
     print("Inactivity timer reset.")
 
