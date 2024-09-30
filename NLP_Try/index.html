@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Doctor Availability and Voice Commands</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Include Simple Keyboard Library -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/simple-keyboard/build/css/index.css"
+    />
+    <style>
+      /* Custom wave effect at the bottom */
+      .wave-background {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 200px;
+        z-index: -1;
+        overflow: hidden;
+      }
+
+      .wave-background svg {
+        width: 100%;
+        height: 100%;
+      }
+
+      /* Fix the input section to the bottom of the screen */
+      .input-section {
+        position: absolute;
+        bottom: 20px;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        padding: 0 16px;
+      }
+
+      /* Center the dropdown at the top */
+      .dropdown-section {
+        position: absolute;
+        top: 50px;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+      }
+
+      /* Pulse Animation for the Mic Button */
+      @keyframes pulse {
+        0% {
+          transform: scale(1);
+          box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+        }
+        70% {
+          transform: scale(1.1);
+          box-shadow: 0 0 0 30px rgba(59, 130, 246, 0);
+        }
+        100% {
+          transform: scale(1);
+          box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+        }
+      }
+
+      .recording {
+        animation: pulse 2s infinite;
+      }
+
+      /* Keyboard Styling */
+      .simple-keyboard {
+        position: fixed;
+        bottom: 0;
+        width: 100%;
+        background-color: #f0f0f0;
+        z-index: 100;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-50 flex flex-col justify-between min-h-screen relative">
+    <!-- Doctor Availability Dropdown centered at the top -->
+    <div class="dropdown-section">
+      <div
+        class="flex flex-col items-center w-full max-w-lg p-4 bg-white rounded-lg shadow-lg"
+      >
+        <label
+          for="doctor"
+          class="block text-lg md:text-xl lg:text-2xl font-semibold text-gray-700 mb-4"
+          >Doctor ............ Availability:</label
+        >
+        <select
+          id="doctor"
+          name="doctor"
+          class="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="dr-smith">Dr. Smith</option>
+          <option value="dr-jones">Dr. Jones</option>
+          <option value="dr-brown">Dr. Brown</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Command Input Section fixed at the bottom -->
+    <div class="input-section">
+      <div class="flex items-center justify-center w-full max-w-lg">
+        <!-- Mic Button -->
+        <button
+          id="micBtn"
+          class="bg-blue-500 p-4 rounded-full hover:bg-blue-600 focus:outline-none w-14 h-14 flex justify-center items-center transition-transform duration-300"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="white"
+            class="w-6 h-6"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 18.5v.5m-6-3v.5a6 6 0 0012 0v-.5M8 11a4 4 0 018 0v1.5m0 0a4 4 0 01-4 4m0 0a4 4 0 01-4-4V11m4 9v.5m0 0a2.5 2.5 0 11-5 0v-.5"
+            />
+          </svg>
+        </button>
+
+        <!-- Input Field -->
+        <input
+          type="text"
+          id="commandInput"
+          placeholder="Speak or type commands....."
+          class="flex-grow p-3 ml-4 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-base w-10/12"
+        />
+
+        <!-- Submit Button -->
+        <button
+          id="submitBtn"
+          class="bg-green-500 text-white px-4 py-2 ml-4 rounded-lg hover:bg-green-600"
+        >
+          Submit
+        </button>
+      </div>
+    </div>
+
+    <!-- Response Section -->
+    <div id="response" class="mt-4 text-lg text-gray-700 text-center"></div>
+
+    <!-- Wave Background -->
+    <div class="wave-background">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 1440 320"
+        preserveAspectRatio="none"
+      >
+        <path
+          fill="#6366f1"
+          fill-opacity="0.3"
+          d="M0,224L60,213.3C120,203,240,181,360,165.3C480,149,600,139,720,149.3C840,160,960,192,1080,181.3C1200,171,1320,117,1380,90.7L1440,64V320H1380C1320,320,1200,320,1080,320C960,320,840,320,720,320C600,320,480,320,360,320C240,320,120,320,60,320H0Z"
+        ></path>
+      </svg>
+    </div>
+
+    <!-- Simple Keyboard for Touch Devices -->
+    <div id="keyboard"></div>
+
+    <!-- Simple Keyboard Library -->
+    <script src="https://cdn.jsdelivr.net/npm/simple-keyboard/build/index.js"></script>
+
+    <script>
+      let keyboard;
+
+      // Initialize the virtual keyboard
+      window.onload = function () {
+        keyboard = new SimpleKeyboard.default({
+          onChange: (input) => onChange(input),
+          onKeyPress: (button) => onKeyPress(button),
+        });
+
+        // Focus the virtual keyboard when the input field is clicked
+        document
+          .getElementById("commandInput")
+          .addEventListener("focus", () => {
+            document.getElementById("keyboard").style.display = "block";
+          });
+      };
+
+      function onChange(input) {
+        document.querySelector("#commandInput").value = input;
+      }
+
+      function onKeyPress(button) {
+        console.log("Button pressed", button);
+      }
+
+      // Voice Recognition Setup
+      const SpeechRecognition =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false; // Stop after one sentence
+      recognition.lang = "en-US";
+
+      recognition.onresult = (event) => {
+        const voiceCommand = event.results[0][0].transcript;
+        document.getElementById("commandInput").value = voiceCommand;
+        // Auto-submit after receiving voice command
+        submitCommand();
+      };
+
+      document.getElementById("micBtn").addEventListener("click", function () {
+        recognition.start();
+        // Add the animation class when recording starts
+        document.getElementById("micBtn").classList.add("recording");
+      });
+
+      recognition.onend = () => {
+        // Remove the animation class when recording stops
+        document.getElementById("micBtn").classList.remove("recording");
+      };
+
+      // Submit button handler
+      document
+        .getElementById("submitBtn")
+        .addEventListener("click", submitCommand);
+
+      async function submitCommand() {
+        const command = document.getElementById("commandInput").value;
+
+        if (command.trim() === "") {
+          document.getElementById("response").innerText =
+            "Please enter a command.";
+          return;
+        }
+
+        // Send command to Flask backend
+        const response = await fetch("http://127.0.0.1:5000/command", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text: command }),
+        });
+
+        const data = await response.json();
+        document.getElementById("response").innerText = data.response;
+      }
+    </script>
+  </body>
+</html>
