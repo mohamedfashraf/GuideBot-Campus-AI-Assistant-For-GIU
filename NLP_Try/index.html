@@ -2,194 +2,329 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Doctor Availability and Voice Commands</title>
+    <title>Doctor Availability with Date Picker</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Include Simple Keyboard Library -->
+    <!-- Include Font Awesome -->
     <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
       rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/simple-keyboard/build/css/index.css"
     />
     <style>
-      /* Custom wave effect at the bottom */
+      /* Wave Animation */
       .wave-background {
         position: absolute;
         bottom: 0;
         left: 0;
         width: 100%;
-        height: 200px;
-        z-index: -1;
+        height: 220px;
         overflow: hidden;
+        z-index: -1;
       }
 
-      .wave-background svg {
-        width: 100%;
+      .wave {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 200%;
         height: 100%;
+        background-repeat: repeat-x;
+        background-size: 50% 100%;
       }
 
-      /* Fix the input section to the bottom of the screen */
-      .input-section {
-        position: absolute;
-        bottom: 20px;
-        width: 100%;
-        display: flex;
-        justify-content: center;
-        padding: 0 16px;
+      .wave:nth-child(1) {
+        background-image: url('data:image/svg+xml;utf8,<svg width="1600" height="220" xmlns="http://www.w3.org/2000/svg"><path d="M0,80 C400,220 1200,-80 1600,80 V220 H0 V80 Z" fill="%23818cf8" opacity="0.5" stroke="%236366f1" stroke-width="2"/></svg>');
+        animation: wave-animation 10s linear infinite;
       }
 
-      /* Center the dropdown at the top */
-      .dropdown-section {
-        position: absolute;
-        top: 50px;
-        width: 100%;
-        display: flex;
-        justify-content: center;
+      .wave:nth-child(2) {
+        background-image: url('data:image/svg+xml;utf8,<svg width="1600" height="220" xmlns="http://www.w3.org/2000/svg"><path d="M0,90 C500,0 1100,220 1600,90 V220 H0 V90 Z" fill="%23818cf8" opacity="0.3" stroke="%236366f1" stroke-width="2"/></svg>');
+        animation: wave-animation 15s linear infinite reverse;
+      }
+
+      .wave:nth-child(3) {
+        background-image: url('data:image/svg+xml;utf8,<svg width="1600" height="220" xmlns="http://www.w3.org/2000/svg"><path d="M0,100 C600,280 1000,-100 1600,100 V220 H0 V100 Z" fill="%23818cf8" opacity="0.2" stroke="%236366f1" stroke-width="2"/></svg>');
+        animation: wave-animation 20s linear infinite;
+      }
+
+      @keyframes wave-animation {
+        0% {
+          transform: translateX(0);
+        }
+        100% {
+          transform: translateX(-50%);
+        }
+      }
+
+      /* Fade-in-up Animation */
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .fade-in-up {
+        animation: fadeInUp 0.5s ease-out forwards;
       }
 
       /* Pulse Animation for the Mic Button */
-      @keyframes pulse {
-        0% {
-          transform: scale(1);
-          box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
-        }
-        70% {
-          transform: scale(1.1);
-          box-shadow: 0 0 0 30px rgba(59, 130, 246, 0);
-        }
-        100% {
-          transform: scale(1);
-          box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
-        }
-      }
-
-      .recording {
+      .mic-btn.recording {
         animation: pulse 2s infinite;
       }
 
-      /* Keyboard Styling */
-      .simple-keyboard {
-        position: fixed;
-        bottom: 0;
-        width: 100%;
-        background-color: #f0f0f0;
-        z-index: 100;
+      @keyframes pulse {
+        0% {
+          transform: scale(1);
+          box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7);
+        }
+        70% {
+          transform: scale(1.1);
+          box-shadow: 0 0 0 30px rgba(99, 102, 241, 0);
+        }
+        100% {
+          transform: scale(1);
+          box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+        }
       }
     </style>
   </head>
-  <body class="bg-gray-50 flex flex-col justify-between min-h-screen relative">
-    <!-- Doctor Availability Dropdown centered at the top -->
-    <div class="dropdown-section">
+  <body
+    class="bg-gradient-to-b from-indigo-50 to-white flex flex-col h-screen relative overflow-hidden"
+  >
+    <!-- Main Content Area -->
+    <div class="flex-grow overflow-auto">
+      <!-- Doctor Availability Dropdown centered at the top -->
+      <div class="dropdown-section text-center mt-10">
+        <div class="w-full max-w-sm mx-auto bg-white rounded-lg shadow-md p-4">
+          <div class="relative">
+            <select
+              id="doctor"
+              name="doctor"
+              class="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Select Doctor</option>
+              <option value="dr-slim">Dr. Slim</option>
+              <option value="dr-nada">Dr. Nada</option>
+              <option value="dr-omar">Dr. Omar</option>
+            </select>
+            <!-- Dropdown Arrow Icon -->
+            <svg
+              class="absolute right-3 top-3 h-4 w-4 text-gray-400 pointer-events-none"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Availability Schedule Section -->
       <div
-        class="flex flex-col items-center w-full max-w-lg p-4 bg-white rounded-lg shadow-lg"
-      >
-        <label
-          for="doctor"
-          class="block text-lg md:text-xl lg:text-2xl font-semibold text-gray-700 mb-4"
-          >Doctor ............ Availability:</label
-        >
-        <select
-          id="doctor"
-          name="doctor"
-          class="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="dr-smith">Dr. Smith</option>
-          <option value="dr-jones">Dr. Jones</option>
-          <option value="dr-brown">Dr. Brown</option>
-        </select>
-      </div>
+        id="schedule"
+        class="schedule-section mt-6 mx-auto max-w-md md:max-w-lg px-4"
+      ></div>
     </div>
 
-    <!-- Command Input Section fixed at the bottom -->
-    <div class="input-section">
-      <div class="flex items-center justify-center w-full max-w-lg">
-        <!-- Mic Button -->
-        <button
-          id="micBtn"
-          class="bg-blue-500 p-4 rounded-full hover:bg-blue-600 focus:outline-none w-14 h-14 flex justify-center items-center transition-transform duration-300"
+    <!-- Command Input Section -->
+    <div class="input-section w-full">
+      <div class="input-wrapper mx-auto w-full max-w-lg mb-4">
+        <div
+          class="flex items-center justify-center bg-white rounded-full px-4 py-2 shadow-lg mx-4"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="white"
-            class="w-6 h-6"
+          <!-- Mic Button -->
+          <button
+            id="micBtn"
+            class="mic-btn flex items-center justify-center bg-gradient-to-br from-indigo-500 to-indigo-600 text-white w-12 h-12 rounded-full mr-3 shadow-xl transition duration-200"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 18.5v.5m-6-3v.5a6 6 0 0012 0v-.5M8 11a4 4 0 018 0v1.5m0 0a4 4 0 01-4 4m0 0a4 4 0 01-4-4V11m4 9v.5m0 0a2.5 2.5 0 11-5 0v-.5"
-            />
-          </svg>
-        </button>
+            <!-- Use Font Awesome Microphone Icon -->
+            <i class="fa-solid fa-microphone"></i>
+          </button>
 
-        <!-- Input Field -->
-        <input
-          type="text"
-          id="commandInput"
-          placeholder="Speak or type commands....."
-          class="flex-grow p-3 ml-4 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-base w-10/12"
-        />
+          <!-- Input Field -->
+          <input
+            type="text"
+            id="commandInput"
+            placeholder="Speak or type commands..."
+            class="flex-grow px-4 py-2 text-gray-700 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
 
-        <!-- Submit Button -->
-        <button
-          id="submitBtn"
-          class="bg-green-500 text-white px-4 py-2 ml-4 rounded-lg hover:bg-green-600"
-        >
-          Submit
-        </button>
+          <!-- Submit Button -->
+          <button
+            id="submitBtn"
+            class="submit-btn flex items-center justify-center bg-gradient-to-br from-indigo-500 to-indigo-600 text-white w-12 h-12 rounded-full ml-3 shadow-xl transition duration-200"
+          >
+            <!-- Send Icon -->
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              fill="currentColor"
+              class="s-icon s-icon-icon-send"
+              viewBox="0 0 16 16"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M15.328 1.294a.798.798 0 0 0-.034-.174c-.006-.02-.013-.046-.026-.066A.65.65 0 0 0 15.14.86a.648.648 0 0 0-.267-.153.567.567 0 0 0-.146-.027.338.338 0 0 0-.087-.013.478.478 0 0 0-.193.04h-.007c-.013.007-.02.007-.033.013L1.114 5.374a.66.66 0 0 0-.446.6.658.658 0 0 0 .393.633l5.78 2.567 2.56 5.766c.107.247.36.407.633.394a.668.668 0 0 0 .6-.447l4.667-13.333a.743.743 0 0 0 .033-.207c0-.02-.006-.04-.006-.053ZM12.12 2.94 7.188 7.874l-4.047-1.8 8.98-3.134Zm-2.187 9.927L8.128 8.814l4.96-4.96-3.154 9.013Z"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
-
-    <!-- Response Section -->
-    <div id="response" class="mt-4 text-lg text-gray-700 text-center"></div>
 
     <!-- Wave Background -->
     <div class="wave-background">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 1440 320"
-        preserveAspectRatio="none"
-      >
-        <path
-          fill="#6366f1"
-          fill-opacity="0.3"
-          d="M0,224L60,213.3C120,203,240,181,360,165.3C480,149,600,139,720,149.3C840,160,960,192,1080,181.3C1200,171,1320,117,1380,90.7L1440,64V320H1380C1320,320,1200,320,1080,320C960,320,840,320,720,320C600,320,480,320,360,320C240,320,120,320,60,320H0Z"
-        ></path>
-      </svg>
+      <div class="wave"></div>
+      <div class="wave"></div>
+      <div class="wave"></div>
     </div>
 
-    <!-- Simple Keyboard for Touch Devices -->
-    <div id="keyboard"></div>
-
-    <!-- Simple Keyboard Library -->
-    <script src="https://cdn.jsdelivr.net/npm/simple-keyboard/build/index.js"></script>
-
     <script>
-      let keyboard;
-
-      // Initialize the virtual keyboard
-      window.onload = function () {
-        keyboard = new SimpleKeyboard.default({
-          onChange: (input) => onChange(input),
-          onKeyPress: (button) => onKeyPress(button),
-        });
-
-        // Focus the virtual keyboard when the input field is clicked
-        document
-          .getElementById("commandInput")
-          .addEventListener("focus", () => {
-            document.getElementById("keyboard").style.display = "block";
-          });
+      // Sample availability data for doctors
+      const doctorAvailability = {
+        "dr-slim": {
+          "2024-10-02": [
+            "10:00 AM - 11:00 AM",
+            "11:00 AM - 12:00 PM",
+            "12:00 PM - 1:00 PM",
+            "1:00 PM - 2:00 PM",
+            "2:00 PM - 3:00 PM",
+            "3:00 PM - 4:00 PM",
+            "4:00 PM - 5:00 PM",
+            "5:00 PM - 6:00 PM",
+          ],
+          "2024-10-03": ["2:00 PM - 3:00 PM", "3:00 PM - 4:00 PM"],
+          "2024-10-04": ["9:00 AM - 10:00 AM", "10:00 AM - 11:00 AM"],
+          "2024-10-05": ["1:00 PM - 2:00 PM", "2:00 PM - 3:00 PM"],
+          "2024-10-06": ["10:00 AM - 11:00 AM", "11:00 AM - 12:00 PM"],
+        },
+        "dr-nada": {
+          "2024-10-01": ["1:00 PM - 2:00 PM", "2:00 PM - 3:00 PM"],
+          "2024-10-02": ["10:00 AM - 11:00 AM", "11:00 AM - 12:00 PM"],
+          "2024-10-03": ["3:00 PM - 4:00 PM", "4:00 PM - 5:00 PM"],
+        },
+        "dr-omar": {
+          "2024-10-01": ["8:00 AM - 9:00 AM", "9:00 AM - 10:00 AM"],
+          "2024-10-02": ["12:00 PM - 1:00 PM", "1:00 PM - 2:00 PM"],
+          "2024-10-03": ["4:00 PM - 5:00 PM", "5:00 PM - 6:00 PM"],
+        },
       };
 
-      function onChange(input) {
-        document.querySelector("#commandInput").value = input;
+      let selectedDoctor = "";
+      let selectedDate = "";
+
+      // Function to display date picker after doctor selection
+      function displayDatePicker(doctorId) {
+        const scheduleDiv = document.getElementById("schedule");
+        scheduleDiv.innerHTML = ""; // Clear previous content
+
+        if (doctorId && doctorAvailability[doctorId]) {
+          const scheduleContent = document.createElement("div");
+          scheduleContent.className =
+            "w-full bg-white rounded-lg shadow-lg p-6 fade-in-up";
+
+          const scheduleHeader = document.createElement("h2");
+          scheduleHeader.className =
+            "text-2xl font-semibold text-gray-800 mb-4";
+          scheduleHeader.textContent = "Select a Date:";
+          scheduleContent.appendChild(scheduleHeader);
+
+          // Date Picker Input
+          const dateInput = document.createElement("input");
+          dateInput.type = "date";
+          dateInput.id = "datePicker";
+          dateInput.className =
+            "w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500";
+
+          dateInput.addEventListener("change", () => {
+            selectedDate = dateInput.value;
+            displayTimes(doctorId, selectedDate);
+          });
+
+          scheduleContent.appendChild(dateInput);
+          scheduleDiv.appendChild(scheduleContent);
+        } else {
+          scheduleDiv.innerHTML =
+            '<p class="text-gray-700 text-center mt-8">Please select a doctor to view availability.</p>';
+        }
       }
 
-      function onKeyPress(button) {
-        console.log("Button pressed", button);
+      // Function to display available times for a selected date
+      function displayTimes(doctorId, date) {
+        const scheduleDiv = document.getElementById("schedule");
+        scheduleDiv.innerHTML = ""; // Clear previous content
+
+        const times = doctorAvailability[doctorId][date];
+
+        const scheduleContent = document.createElement("div");
+        scheduleContent.className =
+          "w-full bg-white rounded-lg shadow-lg p-6 fade-in-up";
+
+        const scheduleHeader = document.createElement("h2");
+        scheduleHeader.className = "text-2xl font-semibold text-gray-800 mb-4";
+        scheduleHeader.textContent = `Available Times on ${new Date(
+          date
+        ).toDateString()}:`;
+        scheduleContent.appendChild(scheduleHeader);
+
+        if (times && times.length > 0) {
+          const timeListContainer = document.createElement("div");
+          timeListContainer.className = "max-h-24 overflow-y-auto"; // Limit to show only 2 items (approx)
+
+          const timeList = document.createElement("div");
+          timeList.className = "space-y-2";
+
+          times.forEach((time) => {
+            const timeItem = document.createElement("div");
+            timeItem.className =
+              "px-4 py-2 bg-indigo-50 rounded-md text-gray-700";
+            timeItem.textContent = time;
+            timeList.appendChild(timeItem);
+          });
+
+          timeListContainer.appendChild(timeList);
+          scheduleContent.appendChild(timeListContainer);
+        } else {
+          const noTimesMessage = document.createElement("p");
+          noTimesMessage.className = "text-gray-700";
+          noTimesMessage.textContent =
+            "No available times on this date. Please select another date.";
+          scheduleContent.appendChild(noTimesMessage);
+        }
+
+        // Back Button to go back to date picker
+        const backButton = document.createElement("button");
+        backButton.className =
+          "mt-4 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md";
+        backButton.textContent = "Back to Date Picker";
+        backButton.addEventListener("click", () => {
+          displayDatePicker(doctorId);
+        });
+
+        scheduleContent.appendChild(backButton);
+
+        scheduleDiv.appendChild(scheduleContent);
       }
+
+      // Event listener for doctor selection
+      document.getElementById("doctor").addEventListener("change", function () {
+        selectedDoctor = this.value;
+        selectedDate = "";
+        displayDatePicker(selectedDoctor);
+      });
 
       // Voice Recognition Setup
       const SpeechRecognition =
@@ -201,18 +336,15 @@
       recognition.onresult = (event) => {
         const voiceCommand = event.results[0][0].transcript;
         document.getElementById("commandInput").value = voiceCommand;
-        // Auto-submit after receiving voice command
-        submitCommand();
+        submitCommand(); // Auto-submit after receiving voice command
       };
 
       document.getElementById("micBtn").addEventListener("click", function () {
         recognition.start();
-        // Add the animation class when recording starts
         document.getElementById("micBtn").classList.add("recording");
       });
 
       recognition.onend = () => {
-        // Remove the animation class when recording stops
         document.getElementById("micBtn").classList.remove("recording");
       };
 
@@ -225,8 +357,7 @@
         const command = document.getElementById("commandInput").value;
 
         if (command.trim() === "") {
-          document.getElementById("response").innerText =
-            "Please enter a command.";
+          alert("Please enter a command.");
           return;
         }
 
@@ -240,8 +371,12 @@
         });
 
         const data = await response.json();
-        document.getElementById("response").innerText = data.response;
+        // Handle the response data as needed
+        console.log(data.response);
       }
+
+      // Initialize with a prompt to select a doctor
+      displayDatePicker("");
     </script>
   </body>
 </html>
