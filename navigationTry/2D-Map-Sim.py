@@ -3,6 +3,8 @@ import math
 import sys
 import serial
 import threading
+import logging
+from datetime import datetime
 
 # -------------------- Constants ---------------------#
 
@@ -39,6 +41,22 @@ FPS = 60
 # Serial communication settings
 SERIAL_PORT = "COM5"
 BAUD_RATE = 9600
+
+# -------------------- Logging Configuration ---------------------#
+
+# Configure the logging module
+logging.basicConfig(
+    level=logging.INFO,  # Set the logging level to INFO
+    format="%(asctime)s - %(levelname)s - %(message)s",  # Log format
+    handlers=[
+        logging.StreamHandler(sys.stdout),  # Log to console
+        # Uncomment the next line to also log to a file
+        # logging.FileHandler("car_navigation.log"),
+    ],
+)
+
+# Create a logger object
+logger = logging.getLogger(__name__)
 
 # -------------------- Wall Class ---------------------#
 
@@ -111,10 +129,18 @@ class CarRobot:
         self.load_image()
         self.create_sensors()
 
+        # Initialize last waypoint reached time to throttle logs
+        self.last_waypoint_time = datetime.min
+
     def load_image(self):
         """Load and scale the car image."""
-        self.original_image = pygame.image.load(CAR_IMAGE_PATH)
-        self.original_image = pygame.transform.scale(self.original_image, CAR_SIZE)
+        try:
+            self.original_image = pygame.image.load(CAR_IMAGE_PATH)
+            self.original_image = pygame.transform.scale(self.original_image, CAR_SIZE)
+            logger.debug("Car image loaded successfully.")
+        except pygame.error as e:
+            logger.error(f"Failed to load car image: {e}")
+            sys.exit()
 
     def create_sensors(self):
         """Initialize the sensor positions based on current angle."""
@@ -179,27 +205,32 @@ class CarRobot:
             self.x = new_x
             self.y = new_y
         else:
-            print("Collision detected! Movement blocked.")
+            logger.warning("Collision detected! Movement blocked.")
 
     def check_waypoint_reached(self):
         """Check if the current waypoint has been reached."""
         target_x, target_y = self.waypoints[self.current_waypoint_index]
         distance = math.hypot(target_x - self.x, target_y - self.y)
         if distance < self.threshold:
-            print(
-                f"Reached waypoint {self.current_waypoint_index + 1}: ({target_x}, {target_y})"
-            )
+            current_time = datetime.now()
+            # Throttle the waypoint reached messages to once every 2 seconds
+            if (current_time - self.last_waypoint_time).total_seconds() > 2:
+                logger.info(
+                    f"Reached waypoint {self.current_waypoint_index + 1}: ({target_x}, {target_y})"
+                )
+                self.last_waypoint_time = current_time
+
             self.current_waypoint_index += self.direction
 
             # Reverse direction if end of waypoints is reached
             if self.current_waypoint_index >= len(self.waypoints):
                 self.current_waypoint_index = len(self.waypoints) - 2
                 self.direction = -1
-                print("Reversing direction to backward.")
+                logger.info("Reversing direction to backward.")
             elif self.current_waypoint_index < 0:
                 self.current_waypoint_index = 1
                 self.direction = 1
-                print("Reversing direction to forward.")
+                logger.info("Reversing direction to forward.")
 
     def update_mask(self):
         """
@@ -234,7 +265,7 @@ class CarRobot:
             offset = (int(wall.rect.x - rect.x), int(wall.rect.y - rect.y))
             overlap = car_mask.overlap(wall.mask, offset)
             if overlap:
-                print(f"Collision with wall at position: {wall.rect}")
+                logger.warning(f"Collision with wall at position: {wall.rect}")
                 collision = True
                 break
 
@@ -317,7 +348,7 @@ class SerialReader(threading.Thread):
         """Run the thread to continuously read from the serial port."""
         try:
             self.ser = serial.Serial(self.serial_port, self.baud_rate, timeout=1)
-            print(
+            logger.info(
                 f"Connected to Arduino on {self.serial_port} at {self.baud_rate} baud."
             )
             while self.running:
@@ -332,13 +363,15 @@ class SerialReader(threading.Thread):
                         )
                         with self.lock:
                             if state == "STOPPED":
+                                if self.state != "STOPPED":
+                                    logger.info("Arduino: STOPPED")
                                 self.state = "STOPPED"
-                                print("Arduino: STOPPED")
                             elif state == "MOVING":
+                                if self.state != "MOVING":
+                                    logger.info("Arduino: MOVING")
                                 self.state = "MOVING"
-                                print("Arduino: MOVING")
         except serial.SerialException as e:
-            print(f"Serial Exception: {e}")
+            logger.error(f"Serial Exception: {e}")
             self.running = False
 
     def get_state(self):
@@ -356,6 +389,7 @@ class SerialReader(threading.Thread):
         self.running = False
         if self.ser and self.ser.is_open:
             self.ser.close()
+            logger.info("Serial connection closed.")
 
 
 # -------------------- Game Class ---------------------#
@@ -380,6 +414,9 @@ class Game:
         self.serial_reader.start()
 
         self.is_moving = True  # Initial movement state
+
+        # To track state changes and avoid repetitive logging
+        self.previous_state = self.serial_reader.get_state()
 
     def create_walls(self):
         """
@@ -426,18 +463,23 @@ class Game:
                     mouse_x, mouse_y = pygame.mouse.get_pos()
                     self.waypoints.append((mouse_x, mouse_y))
                     self.car.waypoints = self.waypoints
-                    print(f"New waypoint added: ({mouse_x}, {mouse_y})")
+                    logger.info(f"New waypoint added: ({mouse_x}, {mouse_y})")
 
             # Update movement state based on serial input
-            self.is_moving = self.serial_reader.get_state() == "MOVING"
-            current_state = "MOVING" if self.is_moving else "STOPPED"
-            print(f"Car movement state: {current_state}")
+            current_state = self.serial_reader.get_state()
+            if current_state != self.previous_state:
+                # Log state changes only
+                logger.info(f"Car movement state changed to: {current_state}")
+                self.previous_state = current_state
+
+            # Determine if the car should move
+            self.is_moving = current_state == "MOVING"
 
             # Update car movement if allowed
             if self.is_moving:
                 self.car.update()
             else:
-                print("CarRobot: Movement paused due to obstacle.")
+                logger.debug("CarRobot: Movement paused due to obstacle.")
 
             # Render environment and car
             self.draw_walls()
@@ -457,5 +499,8 @@ class Game:
 # -------------------- Main Block ---------------------#
 
 if __name__ == "__main__":
-    game = Game()
-    game.run()
+    try:
+        game = Game()
+        game.run()
+    except Exception as e:
+        logger.exception(f"An unexpected error occurred: {e}")
