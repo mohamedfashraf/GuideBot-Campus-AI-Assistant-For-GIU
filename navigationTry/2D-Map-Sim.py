@@ -111,13 +111,15 @@ class CarRobot:
             waypoints (list): List of waypoint tuples.
             walls (list): List of Wall objects for collision detection.
         """
+        self.start_x = x
+        self.start_y = y
         self.x = x
         self.y = y
         self.angle = 0  # Facing right initially
         self.speed = CAR_SPEED
         self.waypoints = waypoints
-        self.current_waypoint_index = 0
-        self.direction = 1  # 1 for forward, -1 for backward
+        self.current_waypoint_index = None  # No waypoint selected initially
+        self.moving = False  # Car should start stationary
         self.threshold = WAYPOINT_THRESHOLD
         self.walls = walls
         self.sensors = []
@@ -126,9 +128,7 @@ class CarRobot:
         self.sensor_fov = SENSOR_FOV
         self.load_image()
         self.create_sensors()
-
-        # Initialize last waypoint reached time to throttle logs
-        self.last_waypoint_time = datetime.min
+        self.obstacle_detected = False  # Obstacle detection status
 
     def load_image(self):
         """Load and scale the car image."""
@@ -168,6 +168,9 @@ class CarRobot:
         Returns:
             float: The angle in degrees towards the target waypoint.
         """
+        if self.current_waypoint_index is None:
+            return self.angle  # If no waypoint selected, return current angle
+
         target_x, target_y = self.waypoints[self.current_waypoint_index]
         dx = target_x - self.x
         dy = self.y - target_y  # Inverted y-axis for Pygame
@@ -207,28 +210,19 @@ class CarRobot:
 
     def check_waypoint_reached(self):
         """Check if the current waypoint has been reached."""
+        if self.current_waypoint_index is None:
+            return False
+
         target_x, target_y = self.waypoints[self.current_waypoint_index]
         distance = math.hypot(target_x - self.x, target_y - self.y)
         if distance < self.threshold:
-            current_time = datetime.now()
-            # Throttle the waypoint reached messages to once every 2 seconds
-            if (current_time - self.last_waypoint_time).total_seconds() > 2:
-                logger.info(
-                    f"Reached waypoint {self.current_waypoint_index + 1}: ({target_x}, {target_y})"
-                )
-                self.last_waypoint_time = current_time
-
-            self.current_waypoint_index += self.direction
-
-            # Reverse direction if end of waypoints is reached
-            if self.current_waypoint_index >= len(self.waypoints):
-                self.current_waypoint_index = len(self.waypoints) - 2
-                self.direction = -1
-                logger.info("Reversing direction to backward.")
-            elif self.current_waypoint_index < 0:
-                self.current_waypoint_index = 1
-                self.direction = 1
-                logger.info("Reversing direction to forward.")
+            logger.info(
+                f"Reached waypoint {self.current_waypoint_index + 1}: ({target_x}, {target_y})"
+            )
+            self.moving = False  # Stop moving after reaching the waypoint
+            self.current_waypoint_index = None  # No active waypoint now
+            return True
+        return False
 
     def update_mask(self):
         """
@@ -271,33 +265,23 @@ class CarRobot:
             self.x, self.y = original_x, original_y
         return collision
 
+    def return_to_start(self):
+        """Move the car back to the starting position."""
+        self.current_waypoint_index = None  # Clear current waypoint
+        self.x, self.y = self.start_x, self.start_y
+        self.angle = 0  # Reset angle
+        self.moving = False  # Stop moving after reaching the start point
+
     def update(self):
         """Update the car's state by rotating and moving towards the target."""
-        target_angle = self.get_target_angle()
-        self.rotate_towards_target(target_angle)
-        self.move_forward()
-        self.check_waypoint_reached()
+        if self.moving and not self.obstacle_detected:  # Only move if no obstacle
+            target_angle = self.get_target_angle()
+            self.rotate_towards_target(target_angle)
+            self.move_forward()
+            self.check_waypoint_reached()
 
-    def draw_state(self, surface, state):
-        """
-        Draw the current state of the car on the screen.
-
-        Args:
-            surface (pygame.Surface): The surface to draw on.
-            state (str): The current state (e.g., "MOVING", "STOPPED").
-        """
-        font = pygame.font.SysFont(None, 36)
-        state_text = font.render(f"State: {state}", True, BLACK)
-        surface.blit(state_text, (10, 10))
-
-    def draw(self, surface, state):
-        """
-        Render the car, sensors, and waypoints on the screen.
-
-        Args:
-            surface (pygame.Surface): The surface to draw on.
-            state (str): The current state of the car.
-        """
+    def draw(self, surface):
+        """Render the car, sensors, and waypoints on the screen."""
         rotated_image, rect = self.update_mask()
         surface.blit(rotated_image, rect.topleft)
 
@@ -316,9 +300,6 @@ class CarRobot:
             img = font.render(str(idx + 1), True, BLACK)
             surface.blit(img, (wp_x + 10, wp_y - 10))
 
-        # Draw current state
-        self.draw_state(surface, state)
-
 
 # -------------------- SerialReader Class ---------------------#
 
@@ -326,19 +307,21 @@ class CarRobot:
 class SerialReader(threading.Thread):
     """Handles serial communication with the Arduino."""
 
-    def __init__(self, serial_port, baud_rate):
+    def __init__(self, serial_port, baud_rate, car):
         """
         Initialize the SerialReader thread.
 
         Args:
             serial_port (str): The serial port to connect to.
             baud_rate (int): The baud rate for communication.
+            car (CarRobot): The car object to control based on serial data.
         """
         super().__init__()
         self.serial_port = serial_port
         self.baud_rate = baud_rate
         self.running = True
         self.ser = None
+        self.car = car  # Car instance to control
         self.state = "MOVING"  # Default state
         self.lock = threading.Lock()
 
@@ -364,23 +347,19 @@ class SerialReader(threading.Thread):
                                 if self.state != "STOPPED":
                                     logger.info("Arduino: STOPPED")
                                 self.state = "STOPPED"
+                                self.car.obstacle_detected = (
+                                    True  # Set obstacle detected flag
+                                )
                             elif state == "MOVING":
                                 if self.state != "MOVING":
                                     logger.info("Arduino: MOVING")
                                 self.state = "MOVING"
+                                self.car.obstacle_detected = (
+                                    False  # Clear obstacle detected flag
+                                )
         except serial.SerialException as e:
             logger.error(f"Serial Exception: {e}")
             self.running = False
-
-    def get_state(self):
-        """
-        Get the current state received from Arduino.
-
-        Returns:
-            str: The current state ("MOVING" or "STOPPED").
-        """
-        with self.lock:
-            return self.state
 
     def stop(self):
         """Stop the serial reader thread and close the serial connection."""
@@ -407,16 +386,9 @@ class Game:
             self.waypoints[0][0], self.waypoints[0][1], self.waypoints, self.walls
         )
 
-        # Initialize serial communication
-        self.serial_reader = SerialReader(SERIAL_PORT, BAUD_RATE)
+        # Initialize serial communication for obstacle detection
+        self.serial_reader = SerialReader(SERIAL_PORT, BAUD_RATE, self.car)
         self.serial_reader.start()
-
-        self.is_moving = True  # Initial movement state
-        self.selected_waypoint = None  # For user-selected waypoint navigation
-        self.car.current_waypoint_index = 0  # Start from the first waypoint
-
-        # To track state changes and avoid repetitive logging
-        self.previous_state = self.serial_reader.get_state()
 
     def create_walls(self):
         """
@@ -463,10 +435,10 @@ class Game:
                 min_distance = distance
 
         if closest_index is not None:
-            self.selected_waypoint = closest_index
-            self.car.current_waypoint_index = self.selected_waypoint
+            self.car.current_waypoint_index = closest_index
+            self.car.moving = True
             logger.info(
-                f"Selected waypoint {self.selected_waypoint + 1}: ({self.waypoints[self.selected_waypoint][0]}, {self.waypoints[self.selected_waypoint][1]})"
+                f"Selected waypoint {closest_index + 1}: ({self.waypoints[closest_index][0]}, {self.waypoints[closest_index][1]})"
             )
 
     def run(self):
@@ -482,34 +454,26 @@ class Game:
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_x, mouse_y = pygame.mouse.get_pos()
                     self.choose_waypoint(mouse_x, mouse_y)
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_r:  # Press 'R' to return to start point
+                        logger.info("Returning to start point.")
+                        self.car.return_to_start()
 
-            # Update movement state based on serial input
-            current_state = self.serial_reader.get_state()
-            if current_state != self.previous_state:
-                # Log state changes only
-                logger.info(f"Car movement state changed to: {current_state}")
-                self.previous_state = current_state
-
-            # Determine if the car should move
-            self.is_moving = current_state == "MOVING"
-
-            # Update car movement if allowed
-            if self.is_moving:
-                self.car.update()
-            else:
-                logger.debug("CarRobot: Movement paused due to obstacle.")
+            # Update car movement
+            self.car.update()
 
             # Render environment and car
             self.draw_walls()
-            self.car.draw(self.screen, current_state)
+            self.car.draw(self.screen)
 
             # Update the display and tick the clock
             pygame.display.flip()
             self.clock.tick(FPS)
 
-        # Clean up on exit
+        # Clean up and stop serial reader thread
         self.serial_reader.stop()
         self.serial_reader.join()
+
         pygame.quit()
         sys.exit()
 
