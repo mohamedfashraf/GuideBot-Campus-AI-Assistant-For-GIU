@@ -13,6 +13,8 @@ pygame.init()
 
 # Screen dimensions
 WIDTH, HEIGHT = 800, 600
+BUTTON_AREA_HEIGHT = 200  # Increased space for the buttons and prompt
+TOTAL_HEIGHT = HEIGHT + BUTTON_AREA_HEIGHT  # Total screen height with buttons area
 
 # Color definitions
 WHITE = (255, 255, 255)
@@ -20,6 +22,8 @@ BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
+DARK_GRAY = (169, 169, 169)
+LIGHT_GRAY = (211, 211, 211)
 
 # Car properties
 CAR_IMAGE_PATH = "navigationTry/2d-super-car-top-view.png"
@@ -101,7 +105,7 @@ class Wall:
 class CarRobot:
     """Represents the autonomous car."""
 
-    def __init__(self, x, y, waypoints, walls):
+    def __init__(self, x, y, waypoints, waypoint_names, walls):
         """
         Initialize the CarRobot.
 
@@ -109,6 +113,7 @@ class CarRobot:
             x (float): Initial x-coordinate.
             y (float): Initial y-coordinate.
             waypoints (list): List of waypoint tuples.
+            waypoint_names (list): List of names for each waypoint.
             walls (list): List of Wall objects for collision detection.
         """
         self.start_x = x
@@ -118,6 +123,7 @@ class CarRobot:
         self.angle = 0  # Facing right initially
         self.speed = CAR_SPEED
         self.waypoints = waypoints
+        self.waypoint_names = waypoint_names
         self.current_waypoint_index = None  # No waypoint selected initially
         self.moving = False  # Car should start stationary
         self.threshold = WAYPOINT_THRESHOLD
@@ -130,6 +136,10 @@ class CarRobot:
         self.create_sensors()
         self.obstacle_detected = False  # Obstacle detection status
         self.state_reason = "Waiting for waypoint"  # Reason for stop or move
+        self.awaiting_choice = (
+            False  # Waiting for user input to continue or go to start
+        )
+        self.is_returning_to_start = False  # Flag to track returning to start
 
     def load_image(self):
         """Load and scale the car image."""
@@ -218,11 +228,20 @@ class CarRobot:
         distance = math.hypot(target_x - self.x, target_y - self.y)
         if distance < self.threshold:
             logger.info(
-                f"Reached waypoint {self.current_waypoint_index + 1}: ({target_x}, {target_y})"
+                f"Reached waypoint {self.waypoint_names[self.current_waypoint_index]}: ({target_x}, {target_y})"
             )
             self.moving = False  # Stop moving after reaching the waypoint
+
+            if not self.is_returning_to_start:
+                # Only set awaiting_choice if not returning to start
+                self.awaiting_choice = True
+                self.state_reason = f"Reached {self.waypoint_names[self.current_waypoint_index]}"  # Update reason
+            else:
+                # If returning to start, reset the flag
+                self.is_returning_to_start = False
+                self.state_reason = "At Start Point"
+
             self.current_waypoint_index = None  # No active waypoint now
-            self.state_reason = "Reached waypoint"  # Update reason
             return True
         return False
 
@@ -268,12 +287,11 @@ class CarRobot:
         return collision
 
     def return_to_start(self):
-        """Move the car back to the starting position."""
-        self.current_waypoint_index = None  # Clear current waypoint
-        self.x, self.y = self.start_x, self.start_y
-        self.angle = 0  # Reset angle
-        self.moving = False  # Stop moving after reaching the start point
-        self.state_reason = "Returned to start point"  # Update reason
+        """Move the car back to the starting position using path following."""
+        self.is_returning_to_start = True
+        self.current_waypoint_index = 0  # Set waypoint index to start
+        self.moving = True  # Start moving back to start
+        self.state_reason = "Returning to start point"  # Update reason
 
     def update(self):
         """Update the car's state by rotating and moving towards the target."""
@@ -316,7 +334,7 @@ class CarRobot:
             color = GREEN if idx == self.current_waypoint_index else BLUE
             pygame.draw.circle(surface, color, (int(wp_x), int(wp_y)), 8)
             font = pygame.font.SysFont(None, 24)
-            img = font.render(str(idx + 1), True, BLACK)
+            img = font.render(self.waypoint_names[idx], True, BLACK)
             surface.blit(img, (wp_x + 10, wp_y - 10))
 
 
@@ -403,13 +421,18 @@ class Game:
 
     def __init__(self):
         """Initialize the game, including screen, clock, walls, waypoints, and car."""
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        self.screen = pygame.display.set_mode((WIDTH, TOTAL_HEIGHT))
         pygame.display.set_caption("Autonomous Car Navigation")
         self.clock = pygame.time.Clock()
         self.walls = self.create_walls()
         self.define_waypoints()
+        self.waypoint_names = ["Start", "M215", "M216", "M217"]
         self.car = CarRobot(
-            self.waypoints[0][0], self.waypoints[0][1], self.waypoints, self.walls
+            self.waypoints[0][0],
+            self.waypoints[0][1],
+            self.waypoints,
+            self.waypoint_names,
+            self.walls,
         )
 
         # Initialize serial communication for obstacle detection
@@ -436,10 +459,10 @@ class Game:
         Define the initial waypoints for the car to navigate.
         """
         self.waypoints = [
-            (150, 150),
-            (650, 150),
-            (650, 450),
-            (150, 450),
+            (150, 150),  # Start
+            (650, 150),  # M215
+            (650, 450),  # M216
+            (150, 450),  # M217
         ]
 
     def draw_walls(self):
@@ -463,10 +486,128 @@ class Game:
         if closest_index is not None:
             self.car.current_waypoint_index = closest_index
             self.car.moving = True
-            self.car.state_reason = "Moving towards waypoint"
-            logger.info(
-                f"Selected waypoint {closest_index + 1}: ({self.waypoints[closest_index][0]}, {self.waypoints[closest_index][1]})"
+            self.car.state_reason = (
+                f"Moving towards {self.car.waypoint_names[closest_index]}"
             )
+            logger.info(
+                f"Selected waypoint {self.car.waypoint_names[closest_index]}: ({self.waypoints[closest_index][0]}, {self.waypoints[closest_index][1]})"
+            )
+
+    def handle_choice(self):
+        """Handle the choice between selecting another waypoint or returning to start."""
+        font = pygame.font.SysFont(None, 36)
+
+        # First, redraw the environment (2D map, car, etc.)
+        self.screen.fill(WHITE)
+        self.draw_walls()
+        self.car.draw(self.screen)
+        self.car.draw_status(self.screen)
+
+        # Define padding and spacing
+        padding = 20
+        spacing = 20
+
+        # Define maximum width for prompt text
+        max_prompt_width = (
+            WIDTH - (3 * padding) - (2 * 160) - (2 * spacing)
+        )  # Total button widths and spacing
+        prompt_text = "Are you done or go to another place?"
+
+        # Wrap the prompt text into multiple lines if necessary
+        prompt_lines = []
+        current_line = ""
+        for word in prompt_text.split():
+            test_line = f"{current_line} {word}".strip()
+            test_width, _ = font.size(test_line)
+            if test_width <= max_prompt_width:
+                current_line = test_line
+            else:
+                if current_line:
+                    prompt_lines.append(current_line)
+                current_line = word
+        if current_line:
+            prompt_lines.append(current_line)
+
+        # Render each line of prompt text
+        for idx, line in enumerate(prompt_lines):
+            rendered_text = font.render(line, True, BLACK)
+            text_rect = rendered_text.get_rect()
+            text_rect.topleft = (
+                padding,
+                HEIGHT + padding + idx * (font.get_height() + 5),
+            )
+            self.screen.blit(rendered_text, text_rect)
+
+        # Calculate the vertical position for buttons based on the number of prompt lines
+        buttons_y = (
+            HEIGHT + padding + len(prompt_lines) * (font.get_height() + 5) + spacing
+        )
+
+        # Define button dimensions
+        button_width = 160
+        button_height = 40
+
+        # Define button positions horizontally with spacing
+        go_button_x = padding
+        done_button_x = go_button_x + button_width + spacing
+
+        # Ensure buttons do not exceed window width
+        if done_button_x + button_width + padding > WIDTH:
+            # Align the "Done" button to the right with padding
+            done_button_x = WIDTH - padding - button_width
+
+        # Y position for buttons (centered vertically in button area)
+        button_y = buttons_y
+
+        # Define button rectangles with borders
+        go_button_rect = pygame.Rect(go_button_x, button_y, button_width, button_height)
+        done_button_rect = pygame.Rect(
+            done_button_x, button_y, button_width, button_height
+        )
+
+        # Draw buttons (light gray for "Go Another" and dark gray for "Done") with borders
+        pygame.draw.rect(self.screen, LIGHT_GRAY, go_button_rect)
+        pygame.draw.rect(self.screen, DARK_GRAY, done_button_rect)
+        pygame.draw.rect(
+            self.screen, BLACK, go_button_rect, 2
+        )  # Border for "Go Another"
+        pygame.draw.rect(self.screen, BLACK, done_button_rect, 2)  # Border for "Done"
+
+        # Render button text
+        go_text = font.render("Go Another", True, BLACK)
+        done_text = font.render("Done", True, BLACK)
+        go_text_rect = go_text.get_rect(center=go_button_rect.center)
+        done_text_rect = done_text.get_rect(center=done_button_rect.center)
+
+        # Blit the text onto the buttons
+        self.screen.blit(go_text, go_text_rect)
+        self.screen.blit(done_text, done_text_rect)
+
+        # Update the screen to display buttons and text
+        pygame.display.flip()
+
+        # Wait for user choice (either Go Another or Done)
+        waiting_for_choice = True
+        while waiting_for_choice:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    mouse_x, mouse_y = pygame.mouse.get_pos()
+
+                    # Check if "Go Another" button is clicked
+                    if go_button_rect.collidepoint(mouse_x, mouse_y):
+                        logger.info("Choosing another waypoint.")
+                        waiting_for_choice = False
+                        self.car.awaiting_choice = False
+
+                    # Check if "Done" button is clicked
+                    elif done_button_rect.collidepoint(mouse_x, mouse_y):
+                        logger.info("Returning to Start.")
+                        self.car.return_to_start()  # Start the car's journey to the start point
+                        waiting_for_choice = False
+                        self.car.awaiting_choice = False
 
     def run(self):
         """Main game loop."""
@@ -480,14 +621,20 @@ class Game:
                     running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_x, mouse_y = pygame.mouse.get_pos()
-                    self.choose_waypoint(mouse_x, mouse_y)
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_r:  # Press 'R' to return to start point
-                        logger.info("Returning to start point.")
-                        self.car.return_to_start()
+                    if (
+                        mouse_y < HEIGHT
+                    ):  # Only allow selecting waypoints within the map area
+                        self.choose_waypoint(mouse_x, mouse_y)
 
             # Update car movement
-            self.car.update()
+            if not self.car.awaiting_choice:
+                self.car.update()
+
+            # If a waypoint was reached, show choice prompt
+            if self.car.awaiting_choice:
+                # Only show the choice prompt if the car hasn't returned to the start
+                if not self.car.is_returning_to_start:
+                    self.handle_choice()
 
             # Render environment and car
             self.draw_walls()
@@ -507,6 +654,7 @@ class Game:
 
 
 # -------------------- Main Block ---------------------#
+
 
 if __name__ == "__main__":
     try:
