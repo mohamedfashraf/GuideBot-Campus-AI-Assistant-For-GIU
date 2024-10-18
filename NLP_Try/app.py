@@ -1,5 +1,7 @@
-from flask import Flask, jsonify, request
-from flask_cors import CORS  # Import CORS
+# app.py
+
+from flask import Flask, jsonify, request, render_template
+from flask_cors import CORS  # If needed
 from gtts import gTTS
 import os
 import subprocess
@@ -7,11 +9,14 @@ from transformers import pipeline
 from pydub import AudioSegment
 from pydub.playback import play
 import uuid
+import webbrowser
+import threading
+import time
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+app = Flask(__name__, static_folder="static", template_folder="templates")
+CORS(app)  # Enable CORS for all routes if frontend is on a different origin
 
-# Initialize the zero-shot classification pipeline with explicit model and clean_up_tokenization_spaces
+# Initialize the zero-shot classification pipeline
 nlp = pipeline(
     "zero-shot-classification",
     model="facebook/bart-large-mnli",
@@ -66,7 +71,8 @@ def open_application(command):
     elif command == "kill":
         response = "Stopping the program. Goodbye!"
         text_to_speech(response)
-        # Stop the Flask server or exit (optional)
+        # Optionally, you can stop the Flask server or exit
+        # os._exit(0)  # Be cautious with using os._exit
         return jsonify({"response": response})
     elif command == "none":
         response = "I didn't understand the command."
@@ -75,6 +81,11 @@ def open_application(command):
 
     text_to_speech(response)
     return jsonify({"response": response})
+
+
+@app.route("/")
+def home():
+    return render_template("index.html")
 
 
 @app.route("/command", methods=["POST"])
@@ -106,6 +117,18 @@ def handle_command():
     return jsonify({"response": "No command received."})
 
 
+def open_browser_after_delay(url, delay=1):
+    """Waits for a specified delay and then opens the browser."""
+    time.sleep(delay)
+    webbrowser.open(url)
+
+
 if __name__ == "__main__":
+    # URL to open
+    url = "http://127.0.0.1:5000/"
+
+    # Start a thread to open the browser after a short delay
+    threading.Thread(target=open_browser_after_delay, args=(url,)).start()
+
     # Running Flask server on port 5000
     app.run(debug=True, port=5000)

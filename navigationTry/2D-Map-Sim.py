@@ -307,7 +307,7 @@ class CarRobot:
         """Draw the current status and reason for stop/move on the screen."""
         font = pygame.font.SysFont(None, 36)
         status = "MOVING" if self.moving else "STOPPED"
-        status_text = font.render(f"Car Status: {status}", True, BLACK)
+        status_text = font.render(f"Robot Status: {status}", True, BLACK)
         reason_text = font.render(f"Reason: {self.state_reason}", True, BLACK)
 
         # Get width of the status text to dynamically place the reason text
