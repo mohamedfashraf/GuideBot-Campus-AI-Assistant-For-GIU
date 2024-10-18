@@ -4,7 +4,7 @@ import sys
 import serial
 import threading
 import logging
-from datetime import datetime
+import time
 
 # -------------------- Constants ---------------------#
 
@@ -13,7 +13,7 @@ pygame.init()
 
 # Screen dimensions
 WIDTH, HEIGHT = 800, 600
-BUTTON_AREA_HEIGHT = 200  # Increased space for the buttons and prompt
+BUTTON_AREA_HEIGHT = 200  # Space for buttons and prompt
 TOTAL_HEIGHT = HEIGHT + BUTTON_AREA_HEIGHT  # Total screen height with buttons area
 
 # Color definitions
@@ -26,7 +26,9 @@ DARK_GRAY = (169, 169, 169)
 LIGHT_GRAY = (211, 211, 211)
 
 # Car properties
-CAR_IMAGE_PATH = "navigationTry/2d-super-car-top-view.png"
+CAR_IMAGE_PATH = (
+    "navigationTry/2d-super-car-top-view.png"  # Ensure this path is correct
+)
 CAR_SIZE = (100, 50)
 CAR_SPEED = 2
 CAR_ROTATION_SPEED = 5
@@ -43,8 +45,8 @@ WAYPOINT_THRESHOLD = 20  # Distance to consider waypoint as reached
 FPS = 60
 
 # Serial communication settings
-SERIAL_PORT = "COM5"
-BAUD_RATE = 9600
+SERIAL_PORT = "COM5"  # Update this as per your system (e.g., "COM5" on Windows or "/dev/ttyUSB0" on Linux/macOS)
+BAUD_RATE = 115200  # Updated to match Arduino's baud rate
 
 # -------------------- Logging Configuration ---------------------#
 
@@ -237,7 +239,7 @@ class CarRobot:
                 self.awaiting_choice = True
                 self.state_reason = f"Reached {self.waypoint_names[self.current_waypoint_index]}"  # Update reason
             else:
-                # If returning to start, reset the flag
+                # If returning to start, reset the flag and set reason
                 self.is_returning_to_start = False
                 self.state_reason = "At Start Point"
 
@@ -344,7 +346,7 @@ class CarRobot:
 class SerialReader(threading.Thread):
     """Handles serial communication with the Arduino."""
 
-    def __init__(self, serial_port, baud_rate, car):
+    def __init__(self, serial_port, baud_rate, car, game):
         """
         Initialize the SerialReader thread.
 
@@ -352,6 +354,7 @@ class SerialReader(threading.Thread):
             serial_port (str): The serial port to connect to.
             baud_rate (int): The baud rate for communication.
             car (CarRobot): The car object to control based on serial data.
+            game (Game): Reference to the Game object for sending commands.
         """
         super().__init__()
         self.serial_port = serial_port
@@ -359,7 +362,8 @@ class SerialReader(threading.Thread):
         self.running = True
         self.ser = None
         self.car = car  # Car instance to control
-        self.state = "MOVING"  # Default state
+        self.game = game  # Reference to Game for sending commands
+        self.state = "STOPPED"  # Initialize to STOPPED
         self.lock = threading.Lock()
 
     def run(self):
@@ -389,6 +393,8 @@ class SerialReader(threading.Thread):
                                 )
                                 self.car.moving = False  # Stop car movement
                                 self.car.state_reason = "Obstacle detected"
+                                # Send command to stop the servo
+                                self.game.send_command("STOP_SERVO")
                             elif state == "MOVING":
                                 if self.state != "MOVING":
                                     logger.info("Arduino: MOVING")
@@ -401,9 +407,25 @@ class SerialReader(threading.Thread):
                                         True  # Resume movement if waypoint is set
                                     )
                                     self.car.state_reason = "Moving towards waypoint"
+                                    # Send command to start the servo
+                                    self.game.send_command("START_SERVO")
         except serial.SerialException as e:
             logger.error(f"Serial Exception: {e}")
             self.running = False
+
+    def send_command(self, command):
+        """
+        Send a command to the Arduino via serial.
+
+        Args:
+            command (str): The command string to send.
+        """
+        if self.ser and self.ser.is_open:
+            try:
+                self.ser.write(f"{command}\n".encode("utf-8"))
+                logger.info(f"Sent command to Arduino: {command}")
+            except serial.SerialException as e:
+                logger.error(f"Failed to send command '{command}': {e}")
 
     def stop(self):
         """Stop the serial reader thread and close the serial connection."""
@@ -436,8 +458,11 @@ class Game:
         )
 
         # Initialize serial communication for obstacle detection
-        self.serial_reader = SerialReader(SERIAL_PORT, BAUD_RATE, self.car)
+        self.serial_reader = SerialReader(SERIAL_PORT, BAUD_RATE, self.car, self)
         self.serial_reader.start()
+
+        # State tracking for command sending
+        self.previous_moving_state = False  # Initially not moving
 
     def create_walls(self):
         """
@@ -492,16 +517,12 @@ class Game:
             logger.info(
                 f"Selected waypoint {self.car.waypoint_names[closest_index]}: ({self.waypoints[closest_index][0]}, {self.waypoints[closest_index][1]})"
             )
+            # Send 'START_SERVO' command to Arduino
+            self.send_command("START_SERVO")
 
-    def handle_choice(self):
-        """Handle the choice between selecting another waypoint or returning to start."""
+    def handle_choice_prompt(self):
+        """Render the choice prompt without blocking the main loop."""
         font = pygame.font.SysFont(None, 36)
-
-        # First, redraw the environment (2D map, car, etc.)
-        self.screen.fill(WHITE)
-        self.draw_walls()
-        self.car.draw(self.screen)
-        self.car.draw_status(self.screen)
 
         # Define padding and spacing
         padding = 20
@@ -583,63 +604,81 @@ class Game:
         self.screen.blit(go_text, go_text_rect)
         self.screen.blit(done_text, done_text_rect)
 
-        # Update the screen to display buttons and text
-        pygame.display.flip()
+        return go_button_rect, done_button_rect
 
-        # Wait for user choice (either Go Another or Done)
-        waiting_for_choice = True
-        while waiting_for_choice:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    mouse_x, mouse_y = pygame.mouse.get_pos()
+    def handle_choice_click(self, mouse_x, mouse_y, go_button_rect, done_button_rect):
+        """Handle user's choice based on mouse click positions."""
+        # Check if "Go Another" button is clicked
+        if go_button_rect.collidepoint(mouse_x, mouse_y):
+            logger.info("Choosing another waypoint.")
+            self.car.awaiting_choice = False
+            # 'START_SERVO' is already sent when movement began
 
-                    # Check if "Go Another" button is clicked
-                    if go_button_rect.collidepoint(mouse_x, mouse_y):
-                        logger.info("Choosing another waypoint.")
-                        waiting_for_choice = False
-                        self.car.awaiting_choice = False
+        # Check if "Done" button is clicked
+        elif done_button_rect.collidepoint(mouse_x, mouse_y):
+            logger.info("Returning to Start.")
+            self.car.return_to_start()  # Start the car's journey to the start point
+            self.car.awaiting_choice = False
+            # 'START_SERVO' is sent in 'return_to_start()'
 
-                    # Check if "Done" button is clicked
-                    elif done_button_rect.collidepoint(mouse_x, mouse_y):
-                        logger.info("Returning to Start.")
-                        self.car.return_to_start()  # Start the car's journey to the start point
-                        waiting_for_choice = False
-                        self.car.awaiting_choice = False
+    def send_command(self, command):
+        """
+        Send a command to the Arduino via serial.
+
+        Args:
+            command (str): The command string to send.
+        """
+        self.serial_reader.send_command(command)
 
     def run(self):
         """Main game loop."""
         running = True
         while running:
-            self.screen.fill(WHITE)
-
-            # Event Handling
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_x, mouse_y = pygame.mouse.get_pos()
-                    if (
-                        mouse_y < HEIGHT
-                    ):  # Only allow selecting waypoints within the map area
-                        self.choose_waypoint(mouse_x, mouse_y)
+                    if self.car.awaiting_choice:
+                        # If choice prompt is active, check if a button was clicked
+                        go_button_rect, done_button_rect = self.handle_choice_prompt()
+                        self.handle_choice_click(
+                            mouse_x, mouse_y, go_button_rect, done_button_rect
+                        )
+                    else:
+                        if mouse_y < HEIGHT:
+                            self.choose_waypoint(mouse_x, mouse_y)
 
             # Update car movement
             if not self.car.awaiting_choice:
                 self.car.update()
 
-            # If a waypoint was reached, show choice prompt
-            if self.car.awaiting_choice:
-                # Only show the choice prompt if the car hasn't returned to the start
-                if not self.car.is_returning_to_start:
-                    self.handle_choice()
+            # State Tracking: Send commands based on state transitions
+            current_moving_state = self.car.moving
+            if current_moving_state != self.previous_moving_state:
+                if current_moving_state:
+                    # Car started moving
+                    self.send_command("START_SERVO")
+                    logger.debug(
+                        "Command 'START_SERVO' sent due to state transition to MOVING."
+                    )
+                else:
+                    # Car stopped moving
+                    self.send_command("STOP_SERVO")
+                    logger.debug(
+                        "Command 'STOP_SERVO' sent due to state transition to STOPPED."
+                    )
+            self.previous_moving_state = current_moving_state
 
             # Render environment and car
+            self.screen.fill(WHITE)
             self.draw_walls()
             self.car.draw(self.screen)
             self.car.draw_status(self.screen)  # Draw car status on the screen
+
+            # If a waypoint was reached, show choice prompt
+            if self.car.awaiting_choice:
+                go_button_rect, done_button_rect = self.handle_choice_prompt()
 
             # Update the display and tick the clock
             pygame.display.flip()
