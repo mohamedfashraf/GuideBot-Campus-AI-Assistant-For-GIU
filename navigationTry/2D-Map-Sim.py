@@ -50,8 +50,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",  # Log format
     handlers=[
         logging.StreamHandler(sys.stdout),  # Log to console
-        # Uncomment the next line to also log to a file
-        # logging.FileHandler("car_navigation.log"),
     ],
 )
 
@@ -414,6 +412,8 @@ class Game:
         self.serial_reader.start()
 
         self.is_moving = True  # Initial movement state
+        self.selected_waypoint = None  # For user-selected waypoint navigation
+        self.car.current_waypoint_index = 0  # Start from the first waypoint
 
         # To track state changes and avoid repetitive logging
         self.previous_state = self.serial_reader.get_state()
@@ -449,6 +449,26 @@ class Game:
         for wall in self.walls:
             wall.draw(self.screen)
 
+    def choose_waypoint(self, mouse_x, mouse_y):
+        """Choose a waypoint based on mouse click and update the car's target."""
+        closest_index = None
+        min_distance = float("inf")
+
+        for idx, (wp_x, wp_y) in enumerate(self.waypoints):
+            distance = math.hypot(mouse_x - wp_x, mouse_y - wp_y)
+            if (
+                distance < min_distance and distance < 50
+            ):  # Threshold for clicking accuracy
+                closest_index = idx
+                min_distance = distance
+
+        if closest_index is not None:
+            self.selected_waypoint = closest_index
+            self.car.current_waypoint_index = self.selected_waypoint
+            logger.info(
+                f"Selected waypoint {self.selected_waypoint + 1}: ({self.waypoints[self.selected_waypoint][0]}, {self.waypoints[self.selected_waypoint][1]})"
+            )
+
     def run(self):
         """Main game loop."""
         running = True
@@ -461,9 +481,7 @@ class Game:
                     running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_x, mouse_y = pygame.mouse.get_pos()
-                    self.waypoints.append((mouse_x, mouse_y))
-                    self.car.waypoints = self.waypoints
-                    logger.info(f"New waypoint added: ({mouse_x}, {mouse_y})")
+                    self.choose_waypoint(mouse_x, mouse_y)
 
             # Update movement state based on serial input
             current_state = self.serial_reader.get_state()
