@@ -129,6 +129,7 @@ class CarRobot:
         self.load_image()
         self.create_sensors()
         self.obstacle_detected = False  # Obstacle detection status
+        self.state_reason = "Waiting for waypoint"  # Reason for stop or move
 
     def load_image(self):
         """Load and scale the car image."""
@@ -221,6 +222,7 @@ class CarRobot:
             )
             self.moving = False  # Stop moving after reaching the waypoint
             self.current_waypoint_index = None  # No active waypoint now
+            self.state_reason = "Reached waypoint"  # Update reason
             return True
         return False
 
@@ -271,6 +273,7 @@ class CarRobot:
         self.x, self.y = self.start_x, self.start_y
         self.angle = 0  # Reset angle
         self.moving = False  # Stop moving after reaching the start point
+        self.state_reason = "Returned to start point"  # Update reason
 
     def update(self):
         """Update the car's state by rotating and moving towards the target."""
@@ -279,6 +282,22 @@ class CarRobot:
             self.rotate_towards_target(target_angle)
             self.move_forward()
             self.check_waypoint_reached()
+
+    def draw_status(self, surface):
+        """Draw the current status and reason for stop/move on the screen."""
+        font = pygame.font.SysFont(None, 36)
+        status = "MOVING" if self.moving else "STOPPED"
+        status_text = font.render(f"Car Status: {status}", True, BLACK)
+        reason_text = font.render(f"Reason: {self.state_reason}", True, BLACK)
+
+        # Get width of the status text to dynamically place the reason text
+        status_text_width = status_text.get_width()
+
+        # Draw status and reason next to each other
+        surface.blit(status_text, (10, 10))  # Status at top-left
+        surface.blit(
+            reason_text, (10 + status_text_width + 20, 10)
+        )  # Reason beside the status with 20px gap
 
     def draw(self, surface):
         """Render the car, sensors, and waypoints on the screen."""
@@ -350,6 +369,8 @@ class SerialReader(threading.Thread):
                                 self.car.obstacle_detected = (
                                     True  # Set obstacle detected flag
                                 )
+                                self.car.moving = False  # Stop car movement
+                                self.car.state_reason = "Obstacle detected"
                             elif state == "MOVING":
                                 if self.state != "MOVING":
                                     logger.info("Arduino: MOVING")
@@ -357,6 +378,11 @@ class SerialReader(threading.Thread):
                                 self.car.obstacle_detected = (
                                     False  # Clear obstacle detected flag
                                 )
+                                if self.car.current_waypoint_index is not None:
+                                    self.car.moving = (
+                                        True  # Resume movement if waypoint is set
+                                    )
+                                    self.car.state_reason = "Moving towards waypoint"
         except serial.SerialException as e:
             logger.error(f"Serial Exception: {e}")
             self.running = False
@@ -437,6 +463,7 @@ class Game:
         if closest_index is not None:
             self.car.current_waypoint_index = closest_index
             self.car.moving = True
+            self.car.state_reason = "Moving towards waypoint"
             logger.info(
                 f"Selected waypoint {closest_index + 1}: ({self.waypoints[closest_index][0]}, {self.waypoints[closest_index][1]})"
             )
@@ -465,6 +492,7 @@ class Game:
             # Render environment and car
             self.draw_walls()
             self.car.draw(self.screen)
+            self.car.draw_status(self.screen)  # Draw car status on the screen
 
             # Update the display and tick the clock
             pygame.display.flip()
