@@ -690,8 +690,8 @@ class Game:
                 command = command_queue.get_nowait()
                 logger.info(f"Processing command from Flask: {command}")
                 if command.startswith("go_to_"):
-                    room = command.split("_")[2]
                     # Map room to waypoint index
+                    room = command.split("_")[2]
                     room_to_index = {
                         "M215": 1,
                         "M216": 2,
@@ -715,10 +715,14 @@ class Game:
                     # User chose 'Done' - return to start
                     logger.info("User chose 'Done' - returning to start.")
                     self.car.return_to_start()
+                    # Enqueue 'Goodbye' to response_queue
+                    response_queue.put("Goodbye, going to start point.")
                 elif command == "user_choice_go_another":
                     # User chose 'Go Another' - waiting for new waypoint
                     logger.info("User chose 'Go Another' - waiting for new waypoint.")
                     self.car.state_reason = "Waiting for waypoint"
+                    # Enqueue 'Where do you want to go next' to response_queue
+                    response_queue.put("Where do you want to go next")
 
         except queue.Empty:
             pass  # No commands to process
