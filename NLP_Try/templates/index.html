@@ -375,8 +375,91 @@
         console.log(data.response);
       }
 
+      // Function to check for prompts from the backend
+      function checkForPrompt() {
+        fetch("http://127.0.0.1:5000/get_prompt")
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.prompt) {
+              // Display the prompt to the user
+              displayPrompt(data.prompt);
+            }
+          })
+          .catch((error) => console.error("Error checking for prompt:", error));
+      }
+
+      // Call checkForPrompt every 2 seconds
+      setInterval(checkForPrompt, 2000);
+
+      function displayPrompt(promptMessage) {
+        // Check if the prompt is already displayed
+        if (document.getElementById("promptModal")) {
+          return;
+        }
+
+        // Create modal overlay
+        const modal = document.createElement("div");
+        modal.id = "promptModal";
+        modal.className =
+          "fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center";
+
+        // Create modal content
+        const content = document.createElement("div");
+        content.className = "bg-white rounded-lg p-6 text-center";
+
+        const message = document.createElement("p");
+        message.className = "text-lg mb-4";
+        message.textContent =
+          promptMessage + ". Are you done or go to another place?";
+
+        content.appendChild(message);
+
+        // Create buttons
+        const doneButton = document.createElement("button");
+        doneButton.className =
+          "px-4 py-2 bg-indigo-500 text-white rounded-md mr-2";
+        doneButton.textContent = "Done";
+        doneButton.addEventListener("click", () => {
+          sendUserChoice("user_choice_done");
+          document.body.removeChild(modal);
+        });
+
+        const goAnotherButton = document.createElement("button");
+        goAnotherButton.className =
+          "px-4 py-2 bg-indigo-500 text-white rounded-md";
+        goAnotherButton.textContent = "Go Another";
+        goAnotherButton.addEventListener("click", () => {
+          sendUserChoice("user_choice_go_another");
+          document.body.removeChild(modal);
+        });
+
+        content.appendChild(doneButton);
+        content.appendChild(goAnotherButton);
+
+        modal.appendChild(content);
+
+        document.body.appendChild(modal);
+      }
+
+      function sendUserChoice(choice) {
+        fetch("http://127.0.0.1:5000/post_choice", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ choice: choice }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.status !== "success") {
+              console.error("Error sending user choice:", data.message);
+            }
+          })
+          .catch((error) => console.error("Error sending user choice:", error));
+      }
+
       // Initialize with a prompt to select a doctor
-      displayDatePicker("");
+      // displayDatePicker("");
     </script>
   </body>
 </html>

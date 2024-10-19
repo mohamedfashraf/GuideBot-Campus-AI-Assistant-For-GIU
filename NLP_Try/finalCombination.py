@@ -20,6 +20,7 @@ import webbrowser
 # Initialize thread-safe queues
 command_queue = queue.Queue()
 response_queue = queue.Queue()
+prompt_queue = queue.Queue()  # Queue for prompts
 
 # -------------------- Constants ---------------------#
 
@@ -184,6 +185,28 @@ def handle_command():
     return jsonify({"response": "No command received."})
 
 
+@app.route("/get_prompt", methods=["GET"])
+def get_prompt():
+    """Return the prompt message if available."""
+    try:
+        prompt = prompt_queue.get_nowait()
+        return jsonify({"prompt": prompt})
+    except queue.Empty:
+        return jsonify({"prompt": None})
+
+
+@app.route("/post_choice", methods=["POST"])
+def post_choice():
+    """Receive the user's choice and put it into command_queue."""
+    data = request.json
+    choice = data.get("choice")
+    if choice:
+        command_queue.put(choice)
+        return jsonify({"status": "success"})
+    else:
+        return jsonify({"status": "error", "message": "No choice provided."}), 400
+
+
 def open_browser_after_delay(url, delay=1):
     """Waits for a specified delay and then opens the browser."""
     time.sleep(delay)
@@ -235,7 +258,7 @@ class Wall:
 class CarRobot:
     """Represents the autonomous car."""
 
-    def __init__(self, x, y, waypoints, waypoint_names, walls):
+    def __init__(self, x, y, waypoints, waypoint_names, walls, prompt_queue):
         """
         Initialize the CarRobot.
 
@@ -245,6 +268,7 @@ class CarRobot:
             waypoints (list): List of waypoint tuples.
             waypoint_names (list): List of names for each waypoint.
             walls (list): List of Wall objects for collision detection.
+            prompt_queue (queue.Queue): Queue to send prompts to the frontend.
         """
         self.start_x = x
         self.start_y = y
@@ -266,10 +290,8 @@ class CarRobot:
         self.create_sensors()
         self.obstacle_detected = False  # Obstacle detection status
         self.state_reason = "Waiting for waypoint"  # Reason for stop or move
-        self.awaiting_choice = (
-            False  # Waiting for user input to continue or go to start
-        )
         self.is_returning_to_start = False  # Flag to track returning to start
+        self.prompt_queue = prompt_queue  # Queue to communicate with frontend
 
     def load_image(self):
         """Load and scale the car image."""
@@ -363,9 +385,12 @@ class CarRobot:
             self.moving = False  # Stop moving after reaching the waypoint
 
             if not self.is_returning_to_start:
-                # Only set awaiting_choice if not returning to start
-                self.awaiting_choice = True
-                self.state_reason = f"Reached {self.waypoint_names[self.current_waypoint_index]}"  # Update reason
+                # Send prompt to frontend
+                prompt_message = (
+                    f"Reached {self.waypoint_names[self.current_waypoint_index]}"
+                )
+                self.prompt_queue.put(prompt_message)
+                self.state_reason = "Awaiting user choice"
             else:
                 # If returning to start, reset the flag and set reason
                 self.is_returning_to_start = False
@@ -583,6 +608,7 @@ class Game:
             self.waypoints,
             self.waypoint_names,
             self.walls,
+            prompt_queue,  # Pass the prompt_queue to the car
         )
 
         # Initialize serial communication for obstacle detection
@@ -648,107 +674,6 @@ class Game:
             # Send 'START_SERVO' command to Arduino
             self.send_command("START_SERVO")
 
-    def handle_choice_prompt(self):
-        """Render the choice prompt without blocking the main loop."""
-        font = pygame.font.SysFont(None, 36)
-
-        # Define padding and spacing
-        padding = 20
-        spacing = 20
-
-        # Define maximum width for prompt text
-        max_prompt_width = (
-            WIDTH - (3 * padding) - (2 * 160) - (2 * spacing)
-        )  # Total button widths and spacing
-        prompt_text = "Are you done or go to another place?"
-
-        # Wrap the prompt text into multiple lines if necessary
-        prompt_lines = []
-        current_line = ""
-        for word in prompt_text.split():
-            test_line = f"{current_line} {word}".strip()
-            test_width, _ = font.size(test_line)
-            if test_width <= max_prompt_width:
-                current_line = test_line
-            else:
-                if current_line:
-                    prompt_lines.append(current_line)
-                current_line = word
-        if current_line:
-            prompt_lines.append(current_line)
-
-        # Render each line of prompt text
-        for idx, line in enumerate(prompt_lines):
-            rendered_text = font.render(line, True, BLACK)
-            text_rect = rendered_text.get_rect()
-            text_rect.topleft = (
-                padding,
-                HEIGHT + padding + idx * (font.get_height() + 5),
-            )
-            self.screen.blit(rendered_text, text_rect)
-
-        # Calculate the vertical position for buttons based on the number of prompt lines
-        buttons_y = (
-            HEIGHT + padding + len(prompt_lines) * (font.get_height() + 5) + spacing
-        )
-
-        # Define button dimensions
-        button_width = 160
-        button_height = 40
-
-        # Define button positions horizontally with spacing
-        go_button_x = padding
-        done_button_x = go_button_x + button_width + spacing
-
-        # Ensure buttons do not exceed window width
-        if done_button_x + button_width + padding > WIDTH:
-            # Align the "Done" button to the right with padding
-            done_button_x = WIDTH - padding - button_width
-
-        # Y position for buttons (centered vertically in button area)
-        button_y = buttons_y
-
-        # Define button rectangles with borders
-        go_button_rect = pygame.Rect(go_button_x, button_y, button_width, button_height)
-        done_button_rect = pygame.Rect(
-            done_button_x, button_y, button_width, button_height
-        )
-
-        # Draw buttons (light gray for "Go Another" and dark gray for "Done") with borders
-        pygame.draw.rect(self.screen, LIGHT_GRAY, go_button_rect)
-        pygame.draw.rect(self.screen, DARK_GRAY, done_button_rect)
-        pygame.draw.rect(
-            self.screen, BLACK, go_button_rect, 2
-        )  # Border for "Go Another"
-        pygame.draw.rect(self.screen, BLACK, done_button_rect, 2)  # Border for "Done"
-
-        # Render button text
-        go_text = font.render("Go Another", True, BLACK)
-        done_text = font.render("Done", True, BLACK)
-        go_text_rect = go_text.get_rect(center=go_button_rect.center)
-        done_text_rect = done_text.get_rect(center=done_button_rect.center)
-
-        # Blit the text onto the buttons
-        self.screen.blit(go_text, go_text_rect)
-        self.screen.blit(done_text, done_text_rect)
-
-        return go_button_rect, done_button_rect
-
-    def handle_choice_click(self, mouse_x, mouse_y, go_button_rect, done_button_rect):
-        """Handle user's choice based on mouse click positions."""
-        # Check if "Go Another" button is clicked
-        if go_button_rect.collidepoint(mouse_x, mouse_y):
-            logger.info("Choosing another waypoint.")
-            self.car.awaiting_choice = False
-            # 'START_SERVO' is already sent when movement began
-
-        # Check if "Done" button is clicked
-        elif done_button_rect.collidepoint(mouse_x, mouse_y):
-            logger.info("Returning to Start.")
-            self.car.return_to_start()  # Start the car's journey to the start point
-            self.car.awaiting_choice = False
-            # 'START_SERVO' is sent in 'return_to_start()'
-
     def send_command(self, command):
         """
         Send a command to the Arduino via serial.
@@ -786,6 +711,15 @@ class Game:
                         self.send_command("START_SERVO")
                     else:
                         logger.warning(f"Unknown room: {room}")
+                elif command == "user_choice_done":
+                    # User chose 'Done' - return to start
+                    logger.info("User chose 'Done' - returning to start.")
+                    self.car.return_to_start()
+                elif command == "user_choice_go_another":
+                    # User chose 'Go Another' - waiting for new waypoint
+                    logger.info("User chose 'Go Another' - waiting for new waypoint.")
+                    self.car.state_reason = "Waiting for waypoint"
+
         except queue.Empty:
             pass  # No commands to process
 
@@ -846,15 +780,8 @@ class Game:
                     running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_x, mouse_y = pygame.mouse.get_pos()
-                    if self.car.awaiting_choice:
-                        # If choice prompt is active, check if a button was clicked
-                        go_button_rect, done_button_rect = self.handle_choice_prompt()
-                        self.handle_choice_click(
-                            mouse_x, mouse_y, go_button_rect, done_button_rect
-                        )
-                    else:
-                        if mouse_y < HEIGHT:
-                            self.choose_waypoint(mouse_x, mouse_y)
+                    if mouse_y < HEIGHT:
+                        self.choose_waypoint(mouse_x, mouse_y)
 
             # Process any incoming commands from Flask
             self.process_commands()
@@ -863,8 +790,7 @@ class Game:
             self.process_responses()
 
             # Update car movement
-            if not self.car.awaiting_choice:
-                self.car.update()
+            self.car.update()
 
             # State Tracking: Send commands based on state transitions
             current_moving_state = self.car.moving
@@ -888,10 +814,6 @@ class Game:
             self.draw_walls()
             self.car.draw(self.screen)
             self.car.draw_status(self.screen)  # Draw car status on the screen
-
-            # If a waypoint was reached, show choice prompt
-            if self.car.awaiting_choice:
-                go_button_rect, done_button_rect = self.handle_choice_prompt()
 
             # Update the display and tick the clock
             pygame.display.flip()
