@@ -45,14 +45,14 @@ LIGHT_GRAY = (211, 211, 211)
 CAR_IMAGE_PATH = (
     "navigationTry/2d-super-car-top-view.png"  # Ensure this path is correct
 )
-CAR_SIZE = (100, 50)
+CAR_SIZE = (80, 40)  # Reduced from (100, 50)
 CAR_SPEED = 2
 CAR_ROTATION_SPEED = 5
 
 # Sensor properties
 NUM_SENSORS = 3
-SENSOR_LENGTH = 150
-SENSOR_FOV = 30  # Field of View in degrees
+SENSOR_LENGTH = 50  # Reduced from 70 to 50
+SENSOR_ANGLES = [-30, 0, 30]  # Angles for left, front, right sensors
 
 # Waypoint properties
 WAYPOINT_THRESHOLD = 20  # Distance to consider waypoint as reached
@@ -61,7 +61,7 @@ WAYPOINT_THRESHOLD = 20  # Distance to consider waypoint as reached
 FPS = 60
 
 # Serial communication settings
-SERIAL_PORT = "COM5"  # Update this as per your system (e.g., "COM5" on Windows or "/dev/ttyUSB0" on Linux/macOS)
+SERIAL_PORT = "COM5"  # Update this as per your system
 BAUD_RATE = 115200  # Updated to match Arduino's baud rate
 
 # -------------------- Logging Configuration ---------------------#
@@ -278,20 +278,19 @@ class CarRobot:
         self.speed = CAR_SPEED
         self.waypoints = waypoints
         self.waypoint_names = waypoint_names
-        self.current_waypoint_index = None  # No waypoint selected initially
+        self.current_target = None  # Current target position
+        self.current_location_name = "Start"  # Current location name
+        self.destination_name = None  # Destination location name
         self.moving = False  # Car should start stationary
         self.threshold = WAYPOINT_THRESHOLD
         self.walls = walls
-        self.sensors = []
-        self.num_sensors = NUM_SENSORS
-        self.sensor_length = SENSOR_LENGTH
-        self.sensor_fov = SENSOR_FOV
         self.load_image()
-        self.create_sensors()
-        self.obstacle_detected = False  # Obstacle detection status
         self.state_reason = "Waiting for waypoint"  # Reason for stop or move
         self.is_returning_to_start = False  # Flag to track returning to start
         self.prompt_queue = prompt_queue  # Queue to communicate with frontend
+        self.sensors = []
+        self.create_sensors()
+        self.path = []  # List of waypoints to follow
 
     def load_image(self):
         """Load and scale the car image."""
@@ -306,35 +305,69 @@ class CarRobot:
     def create_sensors(self):
         """Initialize the sensor positions based on current angle."""
         self.sensors = []
-        half_fov = self.sensor_fov / 2
-        angle_gap = (
-            self.sensor_fov / (self.num_sensors - 1) if self.num_sensors > 1 else 0
-        )
-        for i in range(self.num_sensors):
-            sensor_angle = self.angle - half_fov + i * angle_gap
-            sensor_end_x = self.x + self.sensor_length * math.cos(
-                math.radians(sensor_angle)
-            )
-            sensor_end_y = self.y - self.sensor_length * math.sin(
-                math.radians(sensor_angle)
-            )
+        for angle_offset in SENSOR_ANGLES:
+            sensor_angle = (self.angle + angle_offset) % 360
+            sensor_end_x = self.x + SENSOR_LENGTH * math.cos(math.radians(sensor_angle))
+            sensor_end_y = self.y - SENSOR_LENGTH * math.sin(math.radians(sensor_angle))
             self.sensors.append((sensor_angle, (sensor_end_x, sensor_end_y)))
 
     def update_sensors(self):
         """Update sensor positions."""
         self.create_sensors()
 
+    def check_sensors(self):
+        """Check sensors for obstacle detection."""
+        sensor_data = []
+        for sensor_angle, (sensor_end_x, sensor_end_y) in self.sensors:
+            # Create a line from (self.x, self.y) to (sensor_end_x, sensor_end_y)
+            sensor_line = ((self.x, self.y), (sensor_end_x, sensor_end_y))
+            obstacle_detected = False
+            for wall in self.walls:
+                if self.line_rect_intersect(sensor_line, wall.rect):
+                    obstacle_detected = True
+                    break
+            sensor_data.append((sensor_angle, obstacle_detected))
+        return sensor_data
+
+    def line_rect_intersect(self, line, rect):
+        """Check if a line intersects with a rectangle."""
+        rect_lines = [
+            ((rect.left, rect.top), (rect.right, rect.top)),  # Top
+            ((rect.right, rect.top), (rect.right, rect.bottom)),  # Right
+            ((rect.right, rect.bottom), (rect.left, rect.bottom)),  # Bottom
+            ((rect.left, rect.bottom), (rect.left, rect.top)),  # Left
+        ]
+        for rect_line in rect_lines:
+            if self.line_line_intersect(line, rect_line):
+                return True
+        return False
+
+    def line_line_intersect(self, line1, line2):
+        """Check if two lines intersect."""
+        (x1, y1), (x2, y2) = line1
+        (x3, y3), (x4, y4) = line2
+
+        denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1)
+        if denom == 0:
+            return False  # Lines are parallel
+        ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom
+        ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom
+        if 0 <= ua <= 1 and 0 <= ub <= 1:
+            return True
+        else:
+            return False
+
     def get_target_angle(self):
         """
-        Calculate the angle towards the current waypoint.
+        Calculate the angle towards the current target point.
 
         Returns:
-            float: The angle in degrees towards the target waypoint.
+            float: The angle in degrees towards the target point.
         """
-        if self.current_waypoint_index is None:
-            return self.angle  # If no waypoint selected, return current angle
+        if not self.current_target:
+            return self.angle  # No target, return current angle
 
-        target_x, target_y = self.waypoints[self.current_waypoint_index]
+        target_x, target_y = self.current_target
         dx = target_x - self.x
         dy = self.y - target_y  # Inverted y-axis for Pygame
         angle = math.degrees(math.atan2(dy, dx))
@@ -371,34 +404,48 @@ class CarRobot:
         else:
             logger.warning("Collision detected! Movement blocked.")
 
-    def check_waypoint_reached(self):
-        """Check if the current waypoint has been reached."""
-        if self.current_waypoint_index is None:
+    def check_point_reached(self):
+        """Check if the current target point has been reached."""
+        if not self.current_target:
             return False
 
-        target_x, target_y = self.waypoints[self.current_waypoint_index]
+        target_x, target_y = self.current_target
         distance = math.hypot(target_x - self.x, target_y - self.y)
         if distance < self.threshold:
-            logger.info(
-                f"Reached waypoint {self.waypoint_names[self.current_waypoint_index]}: ({target_x}, {target_y})"
-            )
-            self.moving = False  # Stop moving after reaching the waypoint
+            logger.info(f"Reached point ({target_x}, {target_y})")
+            # Update current location name if we have a name for this waypoint
+            waypoint_name = self.get_waypoint_name(self.current_target)
+            if waypoint_name:
+                self.current_location_name = waypoint_name
 
-            if not self.is_returning_to_start:
-                # Send prompt to frontend
-                prompt_message = (
-                    f"Reached {self.waypoint_names[self.current_waypoint_index]}"
-                )
-                self.prompt_queue.put(prompt_message)
-                self.state_reason = "Awaiting user choice"
+            if self.path:
+                # Move to the next point in the path
+                self.current_target = self.path.pop(0)
+                self.state_reason = f"Moving towards waypoint ({self.current_target[0]}, {self.current_target[1]})"
             else:
-                # If returning to start, reset the flag and set reason
-                self.is_returning_to_start = False
-                self.state_reason = "At Start Point"
-
-            self.current_waypoint_index = None  # No active waypoint now
+                # Reached final destination
+                self.current_location_name = self.destination_name
+                self.current_target = None
+                self.moving = False  # Stop moving after reaching the final point
+                destination_name = self.current_location_name
+                if not self.is_returning_to_start:
+                    # Send prompt to frontend
+                    prompt_message = f"Reached {destination_name}"
+                    self.prompt_queue.put(prompt_message)
+                    self.state_reason = "Awaiting user choice"
+                else:
+                    # If returning to start, reset the flag and set reason
+                    self.is_returning_to_start = False
+                    self.state_reason = "At Start Point"
             return True
         return False
+
+    def get_waypoint_name(self, position):
+        """Get the name of the waypoint given its position."""
+        for name, pos in zip(self.waypoint_names, self.waypoints):
+            if position == pos:
+                return name
+        return None
 
     def update_mask(self):
         """
@@ -441,56 +488,136 @@ class CarRobot:
             self.x, self.y = original_x, original_y
         return collision
 
+    def set_target(self, target_point, destination_name):
+        """Set the target point for the car to move towards."""
+        self.destination_name = destination_name
+        self.moving = True
+        self.state_reason = f"Moving towards {destination_name}"
+        self.update_sensors()
+
+        path_key = (self.current_location_name, destination_name)
+        if path_key in self.waypoint_paths:
+            # Get the path of positions
+            self.path = [
+                self.waypoint_dict[wp_name] for wp_name in self.waypoint_paths[path_key]
+            ]
+            self.current_target = self.path.pop(0)
+        else:
+            self.current_target = target_point
+            self.path = []
+
     def return_to_start(self):
-        """Move the car back to the starting position using path following."""
+        """Move the car back to the starting position."""
         self.is_returning_to_start = True
-        self.current_waypoint_index = 0  # Set waypoint index to start
-        self.moving = True  # Start moving back to start
-        self.state_reason = "Returning to start point"  # Update reason
+        self.set_target((self.start_x, self.start_y), "Start")
 
     def update(self):
         """Update the car's state by rotating and moving towards the target."""
-        if self.moving and not self.obstacle_detected:  # Only move if no obstacle
-            target_angle = self.get_target_angle()
-            self.rotate_towards_target(target_angle)
-            self.move_forward()
-            self.check_waypoint_reached()
+        if self.moving and self.current_target:
+            # First, check sensors for obstacles
+            sensor_data = self.check_sensors()
+            obstacles = [detected for angle, detected in sensor_data if detected]
+
+            # If close to the target, disable obstacle avoidance
+            target_distance = math.hypot(
+                self.current_target[0] - self.x, self.current_target[1] - self.y
+            )
+            if target_distance < self.threshold * 2:
+                obstacles = []
+
+            if obstacles:
+                # Obstacle detected ahead, adjust path
+                left_sensor = sensor_data[0][1]
+                front_sensor = sensor_data[1][1]
+                right_sensor = sensor_data[2][1]
+
+                if front_sensor:
+                    if not left_sensor and right_sensor:
+                        self.angle = (self.angle + CAR_ROTATION_SPEED) % 360
+                        self.state_reason = "Obstacle ahead - Turning left"
+                    elif not right_sensor and left_sensor:
+                        self.angle = (self.angle - CAR_ROTATION_SPEED) % 360
+                        self.state_reason = "Obstacle ahead - Turning right"
+                    elif not left_sensor and not right_sensor:
+                        self.angle = (self.angle + CAR_ROTATION_SPEED) % 360
+                        self.state_reason = "Obstacle ahead - Turning left"
+                    else:
+                        self.moving = False
+                        self.state_reason = "Obstacle ahead, cannot avoid"
+                    self.update_sensors()
+                else:
+                    # Side obstacles, proceed forward
+                    self.move_forward()
+                    self.check_point_reached()
+            else:
+                # No obstacle ahead, proceed towards target
+                target_angle = self.get_target_angle()
+                self.rotate_towards_target(target_angle)
+                self.move_forward()
+                self.check_point_reached()
+        else:
+            self.state_reason = "Stopped"
 
     def draw_status(self, surface):
         """Draw the current status and reason for stop/move on the screen."""
-        font = pygame.font.SysFont(None, 36)
+        font = pygame.font.SysFont(None, 24)
         status = "MOVING" if self.moving else "STOPPED"
         status_text = font.render(f"Robot Status: {status}", True, BLACK)
         reason_text = font.render(f"Reason: {self.state_reason}", True, BLACK)
 
-        # Get width of the status text to dynamically place the reason text
-        status_text_width = status_text.get_width()
-
-        # Draw status and reason next to each other
-        surface.blit(status_text, (10, 10))  # Status at top-left
-        surface.blit(
-            reason_text, (10 + status_text_width + 20, 10)
-        )  # Reason beside the status with 20px gap
+        # Draw status and reason
+        surface.blit(status_text, (10, 10))
+        surface.blit(reason_text, (10, 40))
 
     def draw(self, surface):
-        """Render the car, sensors, and waypoints on the screen."""
+        """Render the car and waypoints on the screen."""
         rotated_image, rect = self.update_mask()
         surface.blit(rotated_image, rect.topleft)
 
-        # Draw sensors
-        for sensor_angle, (sensor_end_x, sensor_end_y) in self.sensors:
+        # Draw sensors with color indicating obstacle detection
+        sensor_data = self.check_sensors()
+        for (sensor_angle, (sensor_end_x, sensor_end_y)), (_, obstacle_detected) in zip(
+            self.sensors, sensor_data
+        ):
+            color = RED if obstacle_detected else GREEN
             pygame.draw.line(
-                surface, RED, (self.x, self.y), (sensor_end_x, sensor_end_y), 2
+                surface, color, (self.x, self.y), (sensor_end_x, sensor_end_y), 2
             )
-            pygame.draw.circle(surface, RED, (int(sensor_end_x), int(sensor_end_y)), 5)
+            pygame.draw.circle(
+                surface, color, (int(sensor_end_x), int(sensor_end_y)), 3
+            )
 
         # Draw waypoints
         for idx, (wp_x, wp_y) in enumerate(self.waypoints):
-            color = GREEN if idx == self.current_waypoint_index else BLUE
+            color = (
+                GREEN
+                if self.waypoint_names[idx] == self.current_location_name
+                else BLUE
+            )
             pygame.draw.circle(surface, color, (int(wp_x), int(wp_y)), 8)
             font = pygame.font.SysFont(None, 24)
             img = font.render(self.waypoint_names[idx], True, BLACK)
             surface.blit(img, (wp_x + 10, wp_y - 10))
+
+    # Define the predefined paths between waypoints
+    waypoint_paths = {
+        ("Start", "M215"): ["M215"],
+        ("M215", "M216"): ["M216"],
+        ("M216", "M217"): ["M217"],
+        ("M217", "Start"): ["Start"],
+        ("Start", "M216"): ["M215", "M216"],
+        ("Start", "M217"): ["M215", "M216", "M217"],
+        ("M215", "M217"): ["M216", "M217"],
+        ("M216", "M215"): ["M215"],
+        ("M216", "Start"): ["M215", "Start"],
+        ("M217", "M216"): ["M216"],
+        ("M217", "M215"): ["M216", "M215"],
+        ("M215", "Start"): ["Start"],
+        # Add more paths as needed
+    }
+
+    # Placeholder for the waypoint dictionary (to be set in Game class)
+    waypoint_dict = {}
 
 
 # -------------------- SerialReader Class ---------------------#
@@ -541,23 +668,17 @@ class SerialReader(threading.Thread):
                                 if self.state != "STOPPED":
                                     logger.info("Arduino: STOPPED")
                                 self.state = "STOPPED"
-                                self.car.obstacle_detected = (
-                                    True  # Set obstacle detected flag
-                                )
                                 self.car.moving = False  # Stop car movement
-                                self.car.state_reason = "Obstacle detected"
+                                self.car.state_reason = "Obstacle detected by Arduino"
                                 # Send command to stop the servo
                                 self.game.send_command("STOP_SERVO")
                             elif state == "MOVING":
                                 if self.state != "MOVING":
                                     logger.info("Arduino: MOVING")
                                 self.state = "MOVING"
-                                self.car.obstacle_detected = (
-                                    False  # Clear obstacle detected flag
-                                )
-                                if self.car.current_waypoint_index is not None:
+                                if self.car.current_target:
                                     self.car.moving = (
-                                        True  # Resume movement if waypoint is set
+                                        True  # Resume movement if target is set
                                     )
                                     self.car.state_reason = "Moving towards waypoint"
                                     # Send command to start the servo
@@ -601,7 +722,6 @@ class Game:
         self.clock = pygame.time.Clock()
         self.walls = self.create_walls()
         self.define_waypoints()
-        self.waypoint_names = ["Start", "M215", "M216", "M217"]
         self.car = CarRobot(
             self.waypoints[0][0],
             self.waypoints[0][1],
@@ -610,6 +730,9 @@ class Game:
             self.walls,
             prompt_queue,  # Pass the prompt_queue to the car
         )
+
+        # Set the waypoint dictionary in the car
+        self.car.waypoint_dict = self.waypoint_dict
 
         # Initialize serial communication for obstacle detection
         self.serial_reader = SerialReader(SERIAL_PORT, BAUD_RATE, self.car, self)
@@ -629,20 +752,33 @@ class Game:
             pygame.Rect(50, 50, 700, 50),  # Top wall
             pygame.Rect(50, 500, 700, 50),  # Bottom wall
             pygame.Rect(50, 50, 50, 500),  # Left wall
-            pygame.Rect(700, 50, 50, 500),  # Right wall
+            pygame.Rect(720, 50, 50, 500),  # Right wall moved from x=700 to x=720
+            pygame.Rect(350, 250, 100, 100),  # Middle wall
         ]
         return [Wall(rect) for rect in wall_rects]
 
     def define_waypoints(self):
         """
-        Define the initial waypoints for the car to navigate.
+        Define the waypoints for the car to navigate.
         """
         self.waypoints = [
             (150, 150),  # Start
-            (650, 150),  # M215
-            (650, 450),  # M216
+            (600, 150),  # M215 moved from x=650 to x=600
+            (600, 450),  # M216 moved from x=650 to x=600
             (150, 450),  # M217
         ]
+        self.waypoint_names = [
+            "Start",
+            "M215",
+            "M216",
+            "M217",
+        ]
+
+        # Map waypoint names to positions
+        self.waypoint_dict = {
+            name: position
+            for name, position in zip(self.waypoint_names, self.waypoints)
+        }
 
     def draw_walls(self):
         """Draw all walls on the screen."""
@@ -663,13 +799,11 @@ class Game:
                 min_distance = distance
 
         if closest_index is not None:
-            self.car.current_waypoint_index = closest_index
-            self.car.moving = True
-            self.car.state_reason = (
-                f"Moving towards {self.car.waypoint_names[closest_index]}"
-            )
+            destination_name = self.waypoint_names[closest_index]
+            target_point = self.waypoints[closest_index]
+            self.car.set_target(target_point, destination_name)
             logger.info(
-                f"Selected waypoint {self.car.waypoint_names[closest_index]}: ({self.waypoints[closest_index][0]}, {self.waypoints[closest_index][1]})"
+                f"Selected waypoint {destination_name}: ({target_point[0]}, {target_point[1]})"
             )
             # Send 'START_SERVO' command to Arduino
             self.send_command("START_SERVO")
@@ -690,22 +824,13 @@ class Game:
                 command = command_queue.get_nowait()
                 logger.info(f"Processing command from Flask: {command}")
                 if command.startswith("go_to_"):
-                    # Map room to waypoint index
+                    # Extract room and get target point
                     room = command.split("_")[2]
-                    room_to_index = {
-                        "M215": 1,
-                        "M216": 2,
-                        "M217": 3,
-                    }
-                    index = room_to_index.get(room)
-                    if index is not None:
-                        self.car.current_waypoint_index = index
-                        self.car.moving = True
-                        self.car.state_reason = (
-                            f"Moving towards {self.car.waypoint_names[index]}"
-                        )
+                    if room in self.waypoint_names:
+                        target_point = self.waypoint_dict[room]
+                        self.car.set_target(target_point, room)
                         logger.info(
-                            f"Set waypoint to {self.car.waypoint_names[index]}: {self.waypoints[index]}"
+                            f"Set target to {room}: ({target_point[0]}, {target_point[1]})"
                         )
                         # Send 'START_SERVO' command to Arduino
                         self.send_command("START_SERVO")
