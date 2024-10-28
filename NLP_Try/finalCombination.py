@@ -374,6 +374,25 @@ class CarRobot:
         angle = math.degrees(math.atan2(dy, dx))
         return angle % 360
 
+    def rotate(self, angle_change):
+        """
+        Rotate the car by a certain angle change, with collision checking.
+
+        Args:
+            angle_change (float): The angle change in degrees.
+        """
+        original_angle = self.angle  # Save original angle
+        self.angle = (self.angle + angle_change) % 360
+        self.update_sensors()
+
+        # Check for collision after rotation
+        if self.check_collision(self.x, self.y):
+            # If collision occurs, revert to original angle
+            self.angle = original_angle
+            self.update_sensors()
+            self.state_reason = "Cannot rotate due to collision"
+            self.moving = False  # Stop moving
+
     def rotate_towards_target(self, target_angle):
         """
         Rotate the car towards the target angle.
@@ -386,14 +405,13 @@ class CarRobot:
             angle_diff -= 360
 
         if abs(angle_diff) < CAR_ROTATION_SPEED:
-            self.angle = target_angle
+            angle_change = angle_diff
         elif angle_diff > 0:
-            self.angle += CAR_ROTATION_SPEED
+            angle_change = CAR_ROTATION_SPEED
         else:
-            self.angle -= CAR_ROTATION_SPEED
+            angle_change = -CAR_ROTATION_SPEED
 
-        self.angle %= 360
-        self.update_sensors()
+        self.rotate(angle_change)
 
     def move_forward(self):
         """Move the car forward based on its speed and angle."""
@@ -402,6 +420,7 @@ class CarRobot:
         if not self.check_collision(new_x, new_y):
             self.x = new_x
             self.y = new_y
+            self.update_sensors()
         else:
             logger.warning("Collision detected! Movement blocked.")
 
@@ -486,7 +505,10 @@ class CarRobot:
                 break
 
         if collision:
-            self.x, self.y = original_x, original_y
+            self.x, self.y = (
+                original_x,
+                original_y,
+            )  # Reset position if collision occurs
         return collision
 
     def set_target(self, target_point, destination_name):
@@ -540,28 +562,50 @@ class CarRobot:
 
                 if front_sensor:
                     if not left_sensor and right_sensor:
-                        self.angle = (self.angle + CAR_ROTATION_SPEED) % 360
+                        # Rotate left in place
+                        self.rotate(CAR_ROTATION_SPEED)
                         self.state_reason = "Obstacle ahead - Turning left"
                     elif not right_sensor and left_sensor:
-                        self.angle = (self.angle - CAR_ROTATION_SPEED) % 360
+                        # Rotate right in place
+                        self.rotate(-CAR_ROTATION_SPEED)
                         self.state_reason = "Obstacle ahead - Turning right"
                     elif not left_sensor and not right_sensor:
-                        self.angle = (self.angle + CAR_ROTATION_SPEED) % 360
+                        # Choose a direction to turn, e.g., left
+                        self.rotate(CAR_ROTATION_SPEED)
                         self.state_reason = "Obstacle ahead - Turning left"
                     else:
                         self.moving = False
                         self.state_reason = "Obstacle ahead, cannot avoid"
-                    self.update_sensors()
                 else:
-                    # Side obstacles, proceed forward
-                    self.move_forward()
-                    self.check_point_reached()
+                    # Side obstacles, proceed forward if facing target direction
+                    target_angle = self.get_target_angle()
+                    angle_diff = (target_angle - self.angle + 360) % 360
+                    if angle_diff > 180:
+                        angle_diff -= 360
+
+                    if abs(angle_diff) > CAR_ROTATION_SPEED:
+                        # Rotate towards target
+                        self.rotate_towards_target(target_angle)
+                        self.state_reason = "Rotating towards target"
+                    else:
+                        # Move forward
+                        self.move_forward()
+                        self.check_point_reached()
             else:
                 # No obstacle ahead, proceed towards target
                 target_angle = self.get_target_angle()
-                self.rotate_towards_target(target_angle)
-                self.move_forward()
-                self.check_point_reached()
+                angle_diff = (target_angle - self.angle + 360) % 360
+                if angle_diff > 180:
+                    angle_diff -= 360
+
+                if abs(angle_diff) > CAR_ROTATION_SPEED:
+                    # Rotate towards target
+                    self.rotate_towards_target(target_angle)
+                    self.state_reason = "Rotating towards target"
+                else:
+                    # Move forward
+                    self.move_forward()
+                    self.check_point_reached()
         else:
             if self.arduino_obstacle_detected:
                 self.state_reason = "Obstacle detected by Arduino"
@@ -586,9 +630,10 @@ class CarRobot:
 
         # Draw sensors with color indicating obstacle detection
         sensor_data = self.check_sensors()
-        for (sensor_angle, (sensor_end_x, sensor_end_y)), (_, obstacle_detected) in zip(
-            self.sensors, sensor_data
-        ):
+        for (sensor_angle, (sensor_end_x, sensor_end_y)), (
+            _,
+            obstacle_detected,
+        ) in zip(self.sensors, sensor_data):
             # If Arduino has detected an obstacle, override the sensor color
             if self.arduino_obstacle_detected:
                 color = RED
