@@ -663,9 +663,13 @@ class CarRobot:
         ("Start", "M215"): ["M215"],
         ("M215", "M216"): ["M216"],
         ("M216", "M217"): ["M217"],
-        ("M217", "Start"): ["Start"],
+        ("M217", "Start"): [
+            "M216",
+            "M215",
+            "Start",
+        ],  # Updated path to avoid blocked route
         ("Start", "M216"): ["M215", "M216"],
-        ("Start", "M217"): ["M215", "M216", "M217"],
+        ("Start", "M217"): ["M215", "M216", "M217"],  # Must go through M215 and M216
         ("M215", "M217"): ["M216", "M217"],
         ("M216", "M215"): ["M215"],
         ("M216", "Start"): ["M215", "Start"],
@@ -817,8 +821,9 @@ class Game:
             pygame.Rect(50, 50, 700, 50),  # Top wall
             pygame.Rect(50, 500, 700, 50),  # Bottom wall
             pygame.Rect(50, 50, 50, 500),  # Left wall
-            pygame.Rect(720, 50, 50, 500),  # Right wall moved from x=700 to x=720
+            pygame.Rect(720, 50, 50, 500),  # Right wall
             pygame.Rect(350, 250, 100, 100),  # Middle wall
+            pygame.Rect(50, 300, 300, 10),  # Wall to separate Start and M217
         ]
         return [Wall(rect) for rect in wall_rects]
 
@@ -828,8 +833,8 @@ class Game:
         """
         self.waypoints = [
             (150, 150),  # Start
-            (600, 150),  # M215 moved from x=650 to x=600
-            (600, 450),  # M216 moved from x=650 to x=600
+            (600, 150),  # M215
+            (600, 450),  # M216
             (150, 450),  # M217
         ]
         self.waypoint_names = [
