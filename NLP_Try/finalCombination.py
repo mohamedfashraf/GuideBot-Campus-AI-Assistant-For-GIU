@@ -51,7 +51,7 @@ CAR_ROTATION_SPEED = 5
 
 # Sensor properties
 NUM_SENSORS = 3
-SENSOR_LENGTH = 50  # Reduced from 70 to 50
+SENSOR_LENGTH = 50  # Adjusted sensor length
 SENSOR_ANGLES = [-30, 0, 30]  # Angles for left, front, right sensors
 
 # Waypoint properties
@@ -291,6 +291,7 @@ class CarRobot:
         self.sensors = []
         self.create_sensors()
         self.path = []  # List of waypoints to follow
+        self.arduino_obstacle_detected = False  # Flag for Arduino obstacle detection
 
     def load_image(self):
         """Load and scale the car image."""
@@ -514,6 +515,12 @@ class CarRobot:
     def update(self):
         """Update the car's state by rotating and moving towards the target."""
         if self.moving and self.current_target:
+            # Check if Arduino has detected an obstacle
+            if self.arduino_obstacle_detected:
+                self.moving = False
+                self.state_reason = "Obstacle detected by Arduino"
+                return
+
             # First, check sensors for obstacles
             sensor_data = self.check_sensors()
             obstacles = [detected for angle, detected in sensor_data if detected]
@@ -556,7 +563,10 @@ class CarRobot:
                 self.move_forward()
                 self.check_point_reached()
         else:
-            self.state_reason = "Stopped"
+            if self.arduino_obstacle_detected:
+                self.state_reason = "Obstacle detected by Arduino"
+            else:
+                self.state_reason = "Stopped"
 
     def draw_status(self, surface):
         """Draw the current status and reason for stop/move on the screen."""
@@ -579,7 +589,11 @@ class CarRobot:
         for (sensor_angle, (sensor_end_x, sensor_end_y)), (_, obstacle_detected) in zip(
             self.sensors, sensor_data
         ):
-            color = RED if obstacle_detected else GREEN
+            # If Arduino has detected an obstacle, override the sensor color
+            if self.arduino_obstacle_detected:
+                color = RED
+            else:
+                color = RED if obstacle_detected else GREEN
             pygame.draw.line(
                 surface, color, (self.x, self.y), (sensor_end_x, sensor_end_y), 2
             )
@@ -670,12 +684,18 @@ class SerialReader(threading.Thread):
                                 self.state = "STOPPED"
                                 self.car.moving = False  # Stop car movement
                                 self.car.state_reason = "Obstacle detected by Arduino"
+                                self.car.arduino_obstacle_detected = (
+                                    True  # Set the flag
+                                )
                                 # Send command to stop the servo
                                 self.game.send_command("STOP_SERVO")
                             elif state == "MOVING":
                                 if self.state != "MOVING":
                                     logger.info("Arduino: MOVING")
                                 self.state = "MOVING"
+                                self.car.arduino_obstacle_detected = (
+                                    False  # Reset the flag
+                                )
                                 if self.car.current_target:
                                     self.car.moving = (
                                         True  # Resume movement if target is set
