@@ -613,15 +613,14 @@ class CarRobot:
                 self.state_reason = "Stopped"
 
     def draw_status(self, surface):
-        """Draw the current status and reason for stop/move on the screen."""
         font = pygame.font.SysFont(None, 24)
         status = "MOVING" if self.moving else "STOPPED"
         status_text = font.render(f"Robot Status: {status}", True, BLACK)
         reason_text = font.render(f"Reason: {self.state_reason}", True, BLACK)
 
-        # Draw status and reason
-        surface.blit(status_text, (10, 10))
-        surface.blit(reason_text, (10, 40))
+        # Position the status and reason below the main map area
+        surface.blit(status_text, (10, HEIGHT + 20))
+        surface.blit(reason_text, (10, HEIGHT + 50))
 
     def draw(self, surface):
         """Render the car and waypoints on the screen."""
