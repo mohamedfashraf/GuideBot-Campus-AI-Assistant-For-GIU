@@ -30,7 +30,7 @@ pygame.init()
 
 # Screen dimensions
 WIDTH, HEIGHT = 800, 600
-BUTTON_AREA_HEIGHT = 200  # Space for buttons and prompt
+BUTTON_AREA_HEIGHT = 50  # Space for buttons and prompt
 TOTAL_HEIGHT = HEIGHT + BUTTON_AREA_HEIGHT  # Total screen height with buttons area
 
 # Color definitions
@@ -681,12 +681,20 @@ class CarRobot:
     def draw_status(self, surface):
         font = pygame.font.SysFont(None, 24)
         status = "MOVING" if self.moving else "STOPPED"
+        
+        # Render status and reason as text
         status_text = font.render(f"Robot Status: {status}", True, BLACK)
         reason_text = font.render(f"Reason: {self.state_reason}", True, BLACK)
+        
+        # Determine the width of the status text to place reason text with a gap
+        status_width = status_text.get_width()
+        margin = 20  # Adjust this value for more or less space between texts
+        
+        # Draw status and reason side by side with a margin
+        surface.blit(status_text, (10, HEIGHT + 10))
+        surface.blit(reason_text, (10 + status_width + margin, HEIGHT + 10))
 
-        # Position the status and reason below the main map area
-        surface.blit(status_text, (10, HEIGHT + 20))
-        surface.blit(reason_text, (10, HEIGHT + 50))
+
 
     def draw(self, surface):
         """Render the car and waypoints on the screen."""
@@ -777,6 +785,7 @@ class SerialReader(threading.Thread):
         self.game = game  # Reference to the Game for sending commands
         self.state = "STOPPED"  # Initialize to STOPPED
         self.lock = threading.Lock()
+        self.obstacle_response_sent = False  # Add this line
 
     def run(self):
         """Run the thread to continuously read from the serial port."""
@@ -856,7 +865,7 @@ class Game:
     def __init__(self):
         """Initialize the game, including screen, clock, walls, waypoints, and car."""
         self.screen = pygame.display.set_mode((WIDTH, TOTAL_HEIGHT))
-        pygame.display.set_caption("Autonomous Car Navigation")
+        pygame.display.set_caption("GuideBot Simulation")
         self.clock = pygame.time.Clock()
         self.walls = self.create_walls()
         self.define_waypoints()
