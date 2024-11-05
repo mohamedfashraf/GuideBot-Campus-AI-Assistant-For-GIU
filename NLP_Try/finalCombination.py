@@ -16,6 +16,7 @@ from pydub import AudioSegment
 from pydub.playback import play
 import uuid
 import webbrowser
+from threading import Lock
 
 # Initialize thread-safe queues
 command_queue = queue.Queue()
@@ -87,27 +88,67 @@ nlp = pipeline(
     clean_up_tokenization_spaces=True,
 )
 
-# Updated labels to include navigation commands
+# Updated labels to include navigation commands and conversation intents
 labels = [
     "open_browser",
     "open_notepad",
     "play_music",
     "turn_on_lights",
     "kill",
+    "ask_admission_open",
+    "confirm_yes",
+    "confirm_no",
+    "none",
+    # Navigation commands with variations
     "go_to_M215",
     "go_to_M216",
-    "go_to_M217",
-    "none",
+    "go_to_Admission",
+    "navigate_to_M215",
+    "navigate_to_M216",
+    "navigate_to_Admission",
+    "take_me_to_M215",
+    "take_me_to_M216",
+    "take_me_to_Admission",
+    "go_to_room_M215",
+    "go_to_room_M216",
+    "go_to_room_Admission",
+    "take_me_to_room_M215",
+    "take_me_to_room_M216",
+    "take_me_to_room_Admission",
 ]
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)  # Enable CORS for all routes if frontend is on a different origin
 
+# State management for conversation
+pending_action = None
+pending_action_lock = Lock()
+
 
 def open_application(command):
     """Prepares the appropriate response based on the command."""
+    global pending_action
     response = ""
-    if command == "open_browser":
+
+    # Handle navigation commands
+    if any(
+        command.startswith(prefix)
+        for prefix in [
+            "go_to_",
+            "navigate_to_",
+            "take_me_to_",
+            "go_to_room_",
+            "take_me_to_room_",
+        ]
+    ):
+        # Extract room name
+        room = command.split("_")[-1]
+        if room in ["M215", "M216", "Admission"]:
+            response = f"Taking you to {room}."
+            command_queue.put(f"go_to_{room}")  # Use standardized command
+        else:
+            response = "I didn't recognize that room."
+    elif command == "open_browser":
         logger.info("Attempting to open the browser...")
         try:
             subprocess.Popen(["start", "chrome"], shell=True)
@@ -136,11 +177,26 @@ def open_application(command):
         response = "Stopping the program. Goodbye!"
         # Optionally, you can stop the Flask server or exit
         # os._exit(0)  # Be cautious with using os._exit
-    elif command.startswith("go_to_"):
-        # Extract room number and enqueue navigation command
-        room = command.split("_")[2]
-        response = f"Taking you to room {room}."
-        command_queue.put(command)  # Place navigation command in the queue
+    elif command == "ask_admission_open":
+        response = "Yes, would you like me to take you to it?"
+        with pending_action_lock:
+            pending_action = "take_to_admission"
+    elif command == "confirm_yes":
+        with pending_action_lock:
+            if pending_action == "take_to_admission":
+                # Enqueue the command to go to Admission
+                command_queue.put("go_to_Admission")
+                response = "Taking you to Admission."
+                pending_action = None  # Reset the pending action
+            else:
+                response = "Yes."
+    elif command == "confirm_no":
+        with pending_action_lock:
+            if pending_action == "take_to_admission":
+                response = "Okay, let me know if you need anything else."
+                pending_action = None
+            else:
+                response = "Okay."
     elif command == "none":
         response = "I didn't understand the command."
     else:
@@ -165,7 +221,17 @@ def handle_command():
 
     if command_text:
         logger.debug(f"Command received: {command_text}")  # Debugging statement
-        result = nlp(command_text, candidate_labels=labels, multi_label=False)
+
+        # Use hypothesis template to improve matching
+        hypothesis_template = "I want to {}."
+
+        result = nlp(
+            command_text,
+            candidate_labels=labels,
+            hypothesis_template=hypothesis_template,
+            multi_label=False,
+        )
+
         logger.debug(f"Model result: {result}")  # Debugging statement
         predicted_label = result["labels"][0]
         confidence = result["scores"][0]
@@ -174,8 +240,8 @@ def handle_command():
             f"Predicted label: {predicted_label} with confidence {confidence}"
         )  # Debugging
 
-        # If confidence is above 0.5, execute the application
-        if confidence > 0.5:
+        # If confidence is above 0.3, execute the application (lowered threshold)
+        if confidence > 0.3:
             return open_application(predicted_label)
         else:
             response = "I'm not sure what you meant. Can you try again?"
@@ -661,19 +727,23 @@ class CarRobot:
     waypoint_paths = {
         ("Start", "M215"): ["M215"],
         ("M215", "M216"): ["M216"],
-        ("M216", "M217"): ["M217"],
-        ("M217", "Start"): [
+        ("M216", "Admission"): ["Admission"],
+        ("Admission", "Start"): [
             "M216",
             "M215",
             "Start",
         ],  # Updated path to avoid blocked route
         ("Start", "M216"): ["M215", "M216"],
-        ("Start", "M217"): ["M215", "M216", "M217"],  # Must go through M215 and M216
-        ("M215", "M217"): ["M216", "M217"],
+        ("Start", "Admission"): [
+            "M215",
+            "M216",
+            "Admission",
+        ],  # Must go through M215 and M216
+        ("M215", "Admission"): ["M216", "Admission"],
         ("M216", "M215"): ["M215"],
         ("M216", "Start"): ["M215", "Start"],
-        ("M217", "M216"): ["M216"],
-        ("M217", "M215"): ["M216", "M215"],
+        ("Admission", "M216"): ["M216"],
+        ("Admission", "M215"): ["M216", "M215"],
         ("M215", "Start"): ["Start"],
         # Add more paths as needed
     }
@@ -704,7 +774,7 @@ class SerialReader(threading.Thread):
         self.running = True
         self.ser = None
         self.car = car  # Car instance to control
-        self.game = game  # Reference to Game for sending commands
+        self.game = game  # Reference to the Game for sending commands
         self.state = "STOPPED"  # Initialize to STOPPED
         self.lock = threading.Lock()
 
@@ -822,7 +892,7 @@ class Game:
             pygame.Rect(50, 50, 50, 500),  # Left wall
             pygame.Rect(720, 50, 50, 500),  # Right wall
             pygame.Rect(350, 250, 100, 100),  # Middle wall
-            pygame.Rect(50, 300, 300, 10),  # Wall to separate Start and M217
+            pygame.Rect(50, 300, 300, 10),  # Wall to separate Start and Admission
         ]
         return [Wall(rect) for rect in wall_rects]
 
@@ -834,13 +904,13 @@ class Game:
             (150, 150),  # Start
             (600, 150),  # M215
             (600, 450),  # M216
-            (150, 450),  # M217
+            (150, 450),  # Admission
         ]
         self.waypoint_names = [
             "Start",
             "M215",
             "M216",
-            "M217",
+            "Admission",
         ]
 
         # Map waypoint names to positions

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Doctor Availability with Date Picker</title>
+    <title>Robot Navigation Interface</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Include Font Awesome -->
@@ -136,6 +136,14 @@
         id="schedule"
         class="schedule-section mt-6 mx-auto max-w-md md:max-w-lg px-4"
       ></div>
+
+      <!-- Last Interaction Area -->
+      <div
+        id="lastInteraction"
+        class="last-interaction-section mt-6 mx-auto max-w-md md:max-w-lg px-4"
+      >
+        <!-- Last command and response will be displayed here -->
+      </div>
     </div>
 
     <!-- Command Input Section -->
@@ -361,6 +369,9 @@
           return;
         }
 
+        // Display user's command and robot's response
+        displayLastInteraction(command, "Thinking...");
+
         // Send command to Flask backend
         const response = await fetch("http://127.0.0.1:5000/command", {
           method: "POST",
@@ -373,6 +384,49 @@
         const data = await response.json();
         // Handle the response data as needed
         console.log(data.response);
+
+        // Update robot's response in the last interaction area
+        displayLastInteraction(command, data.response);
+
+        // Clear the input field
+        document.getElementById("commandInput").value = "";
+      }
+
+      // Function to display the last command and response
+      function displayLastInteraction(userCommand, botResponse) {
+        const lastInteractionDiv = document.getElementById("lastInteraction");
+        lastInteractionDiv.innerHTML = ""; // Clear previous interaction
+
+        const interactionContent = document.createElement("div");
+        interactionContent.className = "fade-in-up";
+
+        // User Command
+        const userMessageBubble = document.createElement("div");
+        userMessageBubble.className =
+          "flex items-start mb-4 justify-end";
+
+        const userBubbleContent = document.createElement("div");
+        userBubbleContent.className =
+          "max-w-xs px-4 py-2 rounded-lg shadow bg-indigo-500 text-white rounded-br-none";
+        userBubbleContent.textContent = userCommand;
+
+        userMessageBubble.appendChild(userBubbleContent);
+        interactionContent.appendChild(userMessageBubble);
+
+        // Robot Response
+        const botMessageBubble = document.createElement("div");
+        botMessageBubble.className =
+          "flex items-start mb-4 justify-start";
+
+        const botBubbleContent = document.createElement("div");
+        botBubbleContent.className =
+          "max-w-xs px-4 py-2 rounded-lg shadow bg-gray-200 text-gray-800 rounded-bl-none";
+        botBubbleContent.textContent = botResponse;
+
+        botMessageBubble.appendChild(botBubbleContent);
+        interactionContent.appendChild(botMessageBubble);
+
+        lastInteractionDiv.appendChild(interactionContent);
       }
 
       // Function to check for prompts from the backend
