@@ -175,19 +175,7 @@
             class="submit-btn flex items-center justify-center bg-gradient-to-br from-indigo-500 to-indigo-600 text-white w-12 h-12 rounded-full ml-3 shadow-xl transition duration-200"
           >
             <!-- Send Icon -->
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              fill="currentColor"
-              class="s-icon s-icon-icon-send"
-              viewBox="0 0 16 16"
-            >
-              <path
-                fill-rule="evenodd"
-                d="M15.328 1.294a.798.798 0 0 0-.034-.174c-.006-.02-.013-.046-.026-.066A.65.65 0 0 0 15.14.86a.648.648 0 0 0-.267-.153.567.567 0 0 0-.146-.027.338.338 0 0 0-.087-.013.478.478 0 0 0-.193.04h-.007c-.013.007-.02.007-.033.013L1.114 5.374a.66.66 0 0 0-.446.6.658.658 0 0 0 .393.633l5.78 2.567 2.56 5.766c.107.247.36.407.633.394a.668.668 0 0 0 .6-.447l4.667-13.333a.743.743 0 0 0 .033-.207c0-.02-.006-.04-.006-.053ZM12.12 2.94 7.188 7.874l-4.047-1.8 8.98-3.134Zm-2.187 9.927L8.128 8.814l4.96-4.96-3.154 9.013Z"
-              />
-            </svg>
+            <i class="fa-solid fa-paper-plane"></i>
           </button>
         </div>
       </div>
@@ -402,8 +390,7 @@
 
         // User Command
         const userMessageBubble = document.createElement("div");
-        userMessageBubble.className =
-          "flex items-start mb-4 justify-end";
+        userMessageBubble.className = "flex items-start mb-4 justify-end";
 
         const userBubbleContent = document.createElement("div");
         userBubbleContent.className =
@@ -415,8 +402,7 @@
 
         // Robot Response
         const botMessageBubble = document.createElement("div");
-        botMessageBubble.className =
-          "flex items-start mb-4 justify-start";
+        botMessageBubble.className = "flex items-start mb-4 justify-start";
 
         const botBubbleContent = document.createElement("div");
         botBubbleContent.className =
@@ -445,6 +431,7 @@
       // Call checkForPrompt every 2 seconds
       setInterval(checkForPrompt, 2000);
 
+      // Simplified displayPrompt function
       function displayPrompt(promptMessage) {
         // Check if the prompt is already displayed
         if (document.getElementById("promptModal")) {
@@ -459,19 +446,25 @@
 
         // Create modal content
         const content = document.createElement("div");
-        content.className = "bg-white rounded-lg p-6 text-center";
+        content.className =
+          "bg-white rounded-lg w-11/12 md:w-1/3 mx-auto p-6 text-center";
 
         const message = document.createElement("p");
-        message.className = "text-lg mb-4";
+        message.className = "text-gray-800 text-lg mb-6";
         message.textContent =
-          promptMessage + ". Are you done or go to another place?";
+          promptMessage +
+          ". Are you done or do you want to go to another place?";
 
         content.appendChild(message);
+
+        // Create buttons container
+        const buttonsContainer = document.createElement("div");
+        buttonsContainer.className = "flex justify-center space-x-4";
 
         // Create buttons
         const doneButton = document.createElement("button");
         doneButton.className =
-          "px-4 py-2 bg-indigo-500 text-white rounded-md mr-2";
+          "px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md";
         doneButton.textContent = "Done";
         doneButton.addEventListener("click", () => {
           sendUserChoice("user_choice_done");
@@ -480,18 +473,22 @@
 
         const goAnotherButton = document.createElement("button");
         goAnotherButton.className =
-          "px-4 py-2 bg-indigo-500 text-white rounded-md";
+          "px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-md";
         goAnotherButton.textContent = "Go Another";
         goAnotherButton.addEventListener("click", () => {
           sendUserChoice("user_choice_go_another");
           document.body.removeChild(modal);
         });
 
-        content.appendChild(doneButton);
-        content.appendChild(goAnotherButton);
+        buttonsContainer.appendChild(doneButton);
+        buttonsContainer.appendChild(goAnotherButton);
 
+        content.appendChild(buttonsContainer);
+
+        // Append content to modal
         modal.appendChild(content);
 
+        // Append modal to body
         document.body.appendChild(modal);
       }
 
