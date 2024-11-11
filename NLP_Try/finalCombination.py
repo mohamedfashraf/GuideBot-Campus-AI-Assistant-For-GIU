@@ -90,15 +90,14 @@ nlp = pipeline(
 
 # Updated labels to include navigation commands and conversation intents
 labels = [
-    "open_browser",
-    "open_notepad",
-    "play_music",
-    "turn_on_lights",
     "kill",
     "ask_admission_open",
     "confirm_yes",
     "confirm_no",
     "none",
+    "hi",  # New label for greeting
+    "hey",  # New label for greeting
+    "hello",  # New label for greeting
     # Navigation commands with variations
     "go_to_M215",
     "go_to_M216",
@@ -117,6 +116,7 @@ labels = [
     "take_me_to_room_Admission",
 ]
 
+
 app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)  # Enable CORS for all routes if frontend is on a different origin
 
@@ -131,7 +131,10 @@ def open_application(command):
     response = ""
 
     # Handle navigation commands
-    if any(
+    if command in ["hi", "hey", "hello"]:
+        response = "Hello there! How can I assist you today?"
+
+    elif any(
         command.startswith(prefix)
         for prefix in [
             "go_to_",
@@ -141,42 +144,14 @@ def open_application(command):
             "take_me_to_room_",
         ]
     ):
-        # Extract room name
         room = command.split("_")[-1]
         if room in ["M215", "M216", "Admission"]:
             response = f"Taking you to {room}."
-            command_queue.put(f"go_to_{room}")  # Use standardized command
+            command_queue.put(f"go_to_{room}")
         else:
             response = "I didn't recognize that room."
-    elif command == "open_browser":
-        logger.info("Attempting to open the browser...")
-        try:
-            subprocess.Popen(["start", "chrome"], shell=True)
-            response = "Opening the browser."
-        except Exception as e:
-            logger.error(f"Failed to open browser: {e}")
-            response = "Failed to open the browser."
-    elif command == "open_notepad":
-        logger.info("Attempting to open Notepad...")
-        try:
-            subprocess.Popen(["notepad.exe"])
-            response = "Opening Notepad."
-        except Exception as e:
-            logger.error(f"Failed to open Notepad: {e}")
-            response = "Failed to open Notepad."
-    elif command == "play_music":
-        logger.info("Playing music.")
-        response = "Playing music."
-        # You can add functionality here to play music
-    elif command == "turn_on_lights":
-        logger.info("Turning on the lights.")
-        response = "Turning on the lights."
-        # Add smart light control code here if you want
     elif command == "kill":
-        logger.info("Stopping the program. Goodbye!")
         response = "Stopping the program. Goodbye!"
-        # Optionally, you can stop the Flask server or exit
-        # os._exit(0)  # Be cautious with using os._exit
     elif command == "ask_admission_open":
         response = "Yes, would you like me to take you to it?"
         with pending_action_lock:
@@ -184,10 +159,9 @@ def open_application(command):
     elif command == "confirm_yes":
         with pending_action_lock:
             if pending_action == "take_to_admission":
-                # Enqueue the command to go to Admission
                 command_queue.put("go_to_Admission")
                 response = "Taking you to Admission."
-                pending_action = None  # Reset the pending action
+                pending_action = None
             else:
                 response = "Yes."
     elif command == "confirm_no":
@@ -202,7 +176,6 @@ def open_application(command):
     else:
         response = "I didn't understand the command."
 
-    # Enqueue the response for Pygame to handle TTS
     response_queue.put(response)
     return jsonify({"response": response})
 
@@ -358,7 +331,9 @@ class CarRobot:
         self.create_sensors()
         self.path = []  # List of waypoints to follow
         self.arduino_obstacle_detected = False  # Flag for Arduino obstacle detection
-        self.obstacle_response_sent = False  # Initialize flag to prevent early responses
+        self.obstacle_response_sent = (
+            False  # Initialize flag to prevent early responses
+        )
         self.started_moving = False
 
     def load_image(self):
@@ -605,7 +580,7 @@ class CarRobot:
     def update(self):
         """Update the car's state by rotating and moving towards the target."""
         if self.moving and self.current_target:
-        # Set started_moving to True once movement begins
+            # Set started_moving to True once movement begins
             self.started_moving = True
 
             # First, check if Arduino has detected an obstacle
@@ -634,7 +609,9 @@ class CarRobot:
                 self.moving = False
                 self.state_reason = "Waiting for obstacle to clear"
                 if self.started_moving and not self.obstacle_response_sent:
-                    response_queue.put("Hi! I’m the campus GuideBot. Could you help clear the way?")
+                    response_queue.put(
+                        "Hi! I’m the campus GuideBot. Could you help clear the way?"
+                    )
                     self.obstacle_response_sent = True
             else:
                 # Clear the flag if no obstacles are detected and proceed towards target
