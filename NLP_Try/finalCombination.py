@@ -17,6 +17,7 @@ from pydub.playback import play
 import uuid
 import webbrowser
 from threading import Lock
+from datetime import datetime
 
 # Initialize thread-safe queues
 command_queue = queue.Queue()
@@ -52,7 +53,7 @@ CAR_ROTATION_SPEED = 5
 
 # Sensor properties
 NUM_SENSORS = 3
-SENSOR_LENGTH = 50  # Adjusted sensor length
+SENSOR_LENGTH = 45  # Adjusted sensor length
 SENSOR_ANGLES = [-30, 0, 30]  # Angles for left, front, right sensors
 
 # Waypoint properties
@@ -89,7 +90,14 @@ nlp = pipeline(
 )
 
 # Define a set of valid rooms (can be easily extended)
-VALID_ROOMS = {"M215", "M216", "ADMISSION"}  # Add more rooms as needed
+VALID_ROOMS = {
+    "M215",
+    "M216",
+    "ADMISSION",
+    "financial",
+    "student_affairs",
+}  # Add more rooms as needed
+
 
 # Generate labels dynamically, including both prefixed and direct room names
 labels = [
@@ -101,8 +109,10 @@ labels = [
     "hi",  # Greeting
     "hey",  # Greeting
     "hello",  # Greeting
+    "financial",  # Room for financial matters
+    "student_affairs",  # Room for course-related or student affairs matters
+    "admission",  # Room for admission-related matters
 ]
-
 # Add dynamic command variations for each room in VALID_ROOMS
 for room in VALID_ROOMS:
     labels.append(room)  # Standalone room name
@@ -115,6 +125,62 @@ for room in VALID_ROOMS:
             f"take_me_to_room_{room}",
         ]
     )
+
+
+# Define weekly schedule globally
+weekly_schedule = {
+    "financial": {
+        "saturday": {"opens_at": "09:00", "closes_at": "17:00"},
+        "sunday": {"opens_at": "09:00", "closes_at": "17:00"},
+        "monday": {"opens_at": "09:00", "closes_at": "17:00"},
+        "tuesday": {"opens_at": "09:00", "closes_at": "17:00"},
+        "wednesday": {"opens_at": "09:00", "closes_at": "17:00"},
+        "thursday": {"opens_at": "09:00", "closes_at": "17:00"},
+    },
+    "student_affairs": {
+        "saturday": {"opens_at": "10:00", "closes_at": "16:00"},
+        "sunday": {"opens_at": "10:00", "closes_at": "16:00"},
+        "monday": {"opens_at": "10:00", "closes_at": "16:00"},
+        "tuesday": {"opens_at": "10:00", "closes_at": "16:00"},
+        "wednesday": {"opens_at": "10:00", "closes_at": "16:00"},
+        "thursday": {"opens_at": "10:00", "closes_at": "16:00"},
+    },
+    "admission": {
+        "saturday": {"opens_at": "08:00", "closes_at": "15:00"},
+        "sunday": {"opens_at": "08:00", "closes_at": "15:00"},
+        "monday": {"opens_at": "08:00", "closes_at": "15:00"},
+        "tuesday": {"opens_at": "08:00", "closes_at": "15:00"},
+        "wednesday": {"opens_at": "08:00", "closes_at": "15:00"},
+        "thursday": {"opens_at": "08:00", "closes_at": "15:00"},
+    },
+}
+
+
+def check_room_availability(room):
+    """Function to check room availability based on the current day and time."""
+    current_day = datetime.now().strftime("%A").lower()
+    current_time = datetime.now().strftime("%H:%M")
+
+    if room in weekly_schedule and current_day in weekly_schedule[room]:
+        opening_time = weekly_schedule[room][current_day]["opens_at"]
+        closing_time = weekly_schedule[room][current_day]["closes_at"]
+
+        # Check if the current time is within the room's open hours
+        if opening_time <= current_time <= closing_time:
+            return {
+                "is_open": True,
+                "opens_at": opening_time,
+                "closes_at": closing_time,
+            }
+        else:
+            return {
+                "is_open": False,
+                "opens_at": opening_time,
+                "closes_at": closing_time,
+            }
+
+    # Default response if no schedule found
+    return {"is_open": True}
 
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
@@ -131,72 +197,150 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 def open_application(command):
-    """Process the command with a fallback to handle direct room names."""
     global pending_action
     response = ""
-
-    # Clean and normalize command
     command = command.strip().upper()
-    logging.debug(f"Received command: {command}")
 
-    # 1. Direct Room Name Check: If the command is a valid room name, process it directly.
-    if command in VALID_ROOMS:
-        response = f"Taking you to {command}."
-        command_queue.put(f"go_to_{command}")
+    # Step 1: Identify room or topic based on predefined rooms and keywords
+    room = None
+    for valid_room in VALID_ROOMS:
+        if valid_room.upper() in command:
+            room = valid_room
+            break
+
+    # Additional keywords for topics if no room is detected
+    if not room:
+        if any(
+            keyword in command for keyword in ["FINANCIAL", "MONEY", "PAYMENT", "PAY"]
+        ):
+            room = "financial"
+        elif any(
+            keyword in command
+            for keyword in ["STUDENT AFFAIRS", "COURSE", "ENROLLMENT", "ADD", "DROP"]
+        ):
+            room = "student_affairs"
+        elif any(
+            keyword in command
+            for keyword in [
+                "ADMISSION",
+                "APPLY",
+                "APPLICATION",
+                "ENROLL",
+                "KIDS",
+                "CHILD",
+                "REGISTRATION",
+            ]
+        ):
+            room = "admission"
+
+    # Step 2: Provide initial conversational response based on identified room
+    if room:
+        response = f"It sounds like the {room.capitalize()} office is where you need to go. Would you like me to check if it's open?"
+        pending_action = f"check_availability_{room}"
+        response_queue.put(response)
+        return jsonify({"response": response})
+
+    # Step 3: Check availability if pending action indicates it and user confirms
+    elif (
+        command == "CONFIRM_YES"
+        and pending_action
+        and pending_action.startswith("check_availability_")
+    ):
+        room = pending_action.split("_")[-1]
+        availability = check_room_availability(room)
+
+        if availability["is_open"]:
+            response = (
+                f"{room.capitalize()} is open. Would you like me to guide you there?"
+            )
+            with pending_action_lock:
+                pending_action = f"go_to_{room}"
+        else:
+            next_open_day, next_open_time = get_next_opening(room)
+            response = f"{room.capitalize()} is currently closed and will open on {next_open_day} at {next_open_time}. Would you like help with something else?"
+
+            # Set pending action to handle further assistance request
+            with pending_action_lock:
+                pending_action = "ask_if_help_needed"
+
+        response_queue.put(response)
+        return jsonify({"response": response})
+
+    # Step 4: Handle further assistance request based on user response
+    elif pending_action == "ask_if_help_needed":
+        if command == "YES":
+            response = "Great! What would you like help with?"
+            pending_action = None
+        elif command == "NO":
+            response = "Okay, feel free to ask if you need any assistance. Goodbye!"
+            pending_action = None
+        else:
+            # Fast forward if user states their request directly
+            pending_action = None
+            return open_application(command)  # Re-run to handle the direct request
+
+        response_queue.put(response)
+        return jsonify({"response": response})
+
+    # Step 5: Guide the user to the room if they confirm guidance
+    elif (
+        command == "CONFIRM_YES"
+        and pending_action
+        and pending_action.startswith("go_to_")
+    ):
+        room = pending_action.split("_")[-1]
+        command_queue.put(f"go_to_{room}")
+        response = f"Taking you to the {room.capitalize()} room now."
         pending_action = None
         response_queue.put(response)
         return jsonify({"response": response})
 
-    # 1b. Pattern Matching for Room Commands
-    for room in VALID_ROOMS:
-        # Check if command matches one of the generated patterns for each room
-        if command in {
-            f"GO_TO_{room}",
-            f"NAVIGATE_TO_{room}",
-            f"TAKE_ME_TO_{room}",
-            f"GO_TO_ROOM_{room}",
-            f"TAKE_ME_TO_ROOM_{room}",
-        }:
-            response = f"Taking you to {room}."
-            command_queue.put(f"go_to_{room}")
-            pending_action = None
-            response_queue.put(response)
-            return jsonify({"response": response})
+    elif command == "CONFIRM_NO" and pending_action:
+        response = "Okay, let me know if you need anything else."
+        pending_action = None
+        response_queue.put(response)
+        return jsonify({"response": response})
 
-    # 2. Known Command Check: Handle specific commands directly.
-    if command.lower() in ["hi", "hey", "hello"]:
+    # Handle greetings or fallback for unrecognized commands
+    elif command.lower() in ["hi", "hey", "hello"]:
         response = "Hello there! How can I assist you today?"
-    elif command == "ASK_ADMISSION_OPEN":
-        response = "Yes, would you like me to take you to it?"
-        with pending_action_lock:
-            pending_action = "take_to_admission"
     elif command == "KILL":
         response = "Stopping the program. Goodbye!"
 
-    # 3. Handle Confirmations if there's a pending action
-    elif command == "CONFIRM_YES" and pending_action:
-        with pending_action_lock:
-            if pending_action == "take_to_admission":
-                command_queue.put("go_to_Admission")
-                response = "Taking you to Admission."
-                pending_action = None
-            else:
-                response = "Yes."
-    elif command == "CONFIRM_NO" and pending_action:
-        with pending_action_lock:
-            if pending_action == "take_to_admission":
-                response = "Okay, let me know if you need anything else."
-                pending_action = None
-            else:
-                response = "Okay."
-
-    # 4. If none of the above, use model prediction as a fallback
     else:
-        response = "I didn't understand the command."
-        logging.debug(f"Command not recognized as room or specific command: {command}")
+        response = "I didn't understand the command. Could you please rephrase?"
 
     response_queue.put(response)
     return jsonify({"response": response})
+
+
+# Helper function to find the next opening day and time
+def get_next_opening(room):
+    current_day = datetime.now().strftime("%A").lower()
+    current_time = datetime.now().strftime("%H:%M")
+    days_of_week = [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+    ]
+
+    # Find the next day and time the room is open
+    for i in range(7):  # Check up to a week ahead
+        day_index = (days_of_week.index(current_day) + i) % 7
+        next_day = days_of_week[day_index]
+        if next_day in weekly_schedule[room]:
+            opening_time = weekly_schedule[room][next_day]["opens_at"]
+            if i > 0 or current_time < opening_time:
+                return next_day.capitalize(), opening_time
+
+    return (
+        None,
+        None,
+    )  # If no opening time is found, which is unlikely in a weekly schedule
 
 
 @app.route("/")
@@ -573,15 +717,12 @@ class CarRobot:
         return collision
 
     def set_target(self, target_point, destination_name):
-        """Set the target point for the car to move towards."""
         self.destination_name = destination_name
         self.moving = True
         self.state_reason = f"Moving towards {destination_name}"
         self.update_sensors()
-
         path_key = (self.current_location_name, destination_name)
         if path_key in self.waypoint_paths:
-            # Get the path of positions
             self.path = [
                 self.waypoint_dict[wp_name] for wp_name in self.waypoint_paths[path_key]
             ]
@@ -589,6 +730,7 @@ class CarRobot:
         else:
             self.current_target = target_point
             self.path = []
+        logger.info(f"Set target for {destination_name}: {self.current_target}")
 
     def return_to_start(self):
         """Move the car back to the starting position."""
@@ -944,39 +1086,26 @@ class Game:
         self.serial_reader.send_command(command)
 
     def process_commands(self):
-        """Process any incoming commands from the command queue."""
         try:
             while True:
                 command = command_queue.get_nowait()
-                logger.info(f"Processing command from Flask: {command}")
                 if command.startswith("go_to_"):
-                    # Extract room and get target point
-                    room = command.split("_")[2]
+                    room = command.split("_")[-1]  # Extract the room name dynamically
                     if room in self.waypoint_names:
                         target_point = self.waypoint_dict[room]
                         self.car.set_target(target_point, room)
-                        logger.info(
-                            f"Set target to {room}: ({target_point[0]}, {target_point[1]})"
-                        )
-                        # Send 'START_SERVO' command to Arduino
+                        logger.info(f"Setting target to {room}: {target_point}")
                         self.send_command("START_SERVO")
                     else:
                         logger.warning(f"Unknown room: {room}")
                 elif command == "user_choice_done":
-                    # User chose 'Done' - return to start
-                    logger.info("User chose 'Done' - returning to start.")
                     self.car.return_to_start()
-                    # Enqueue 'Goodbye' to response_queue
                     response_queue.put("Goodbye, going to start point.")
                 elif command == "user_choice_go_another":
-                    # User chose 'Go Another' - waiting for new waypoint
-                    logger.info("User chose 'Go Another' - waiting for new waypoint.")
                     self.car.state_reason = "Waiting for waypoint"
-                    # Enqueue 'Where do you want to go next' to response_queue
                     response_queue.put("Where do you want to go next")
-
         except queue.Empty:
-            pass  # No commands to process
+            pass
 
     def process_responses(self):
         """Process any incoming responses from the response queue."""
