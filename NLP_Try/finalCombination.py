@@ -88,33 +88,33 @@ nlp = pipeline(
     clean_up_tokenization_spaces=True,
 )
 
-# Updated labels to include navigation commands and conversation intents
+# Define a set of valid rooms (can be easily extended)
+VALID_ROOMS = {"M215", "M216", "ADMISSION"}  # Add more rooms as needed
+
+# Generate labels dynamically, including both prefixed and direct room names
 labels = [
     "kill",
     "ask_admission_open",
     "confirm_yes",
     "confirm_no",
     "none",
-    "hi",  # New label for greeting
-    "hey",  # New label for greeting
-    "hello",  # New label for greeting
-    # Navigation commands with variations
-    "go_to_M215",
-    "go_to_M216",
-    "go_to_Admission",
-    "navigate_to_M215",
-    "navigate_to_M216",
-    "navigate_to_Admission",
-    "take_me_to_M215",
-    "take_me_to_M216",
-    "take_me_to_Admission",
-    "go_to_room_M215",
-    "go_to_room_M216",
-    "go_to_room_Admission",
-    "take_me_to_room_M215",
-    "take_me_to_room_M216",
-    "take_me_to_room_Admission",
+    "hi",  # Greeting
+    "hey",  # Greeting
+    "hello",  # Greeting
 ]
+
+# Add dynamic command variations for each room in VALID_ROOMS
+for room in VALID_ROOMS:
+    labels.append(room)  # Standalone room name
+    labels.extend(
+        [
+            f"go_to_{room}",
+            f"navigate_to_{room}",
+            f"take_me_to_{room}",
+            f"go_to_room_{room}",
+            f"take_me_to_room_{room}",
+        ]
+    )
 
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
@@ -124,39 +124,41 @@ CORS(app)  # Enable CORS for all routes if frontend is on a different origin
 pending_action = None
 pending_action_lock = Lock()
 
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+
 
 def open_application(command):
-    """Prepares the appropriate response based on the command."""
+    """Process the command with a fallback to handle direct room names."""
     global pending_action
     response = ""
 
-    # Handle navigation commands
-    if command in ["hi", "hey", "hello"]:
-        response = "Hello there! How can I assist you today?"
+    # Clean and normalize command
+    command = command.strip().upper()
+    logging.debug(f"Received command: {command}")
 
-    elif any(
-        command.startswith(prefix)
-        for prefix in [
-            "go_to_",
-            "navigate_to_",
-            "take_me_to_",
-            "go_to_room_",
-            "take_me_to_room_",
-        ]
-    ):
-        room = command.split("_")[-1]
-        if room in ["M215", "M216", "Admission"]:
-            response = f"Taking you to {room}."
-            command_queue.put(f"go_to_{room}")
-        else:
-            response = "I didn't recognize that room."
-    elif command == "kill":
-        response = "Stopping the program. Goodbye!"
-    elif command == "ask_admission_open":
+    # 1. Direct Room Name Check: If the command is a valid room name, process it directly.
+    if command in VALID_ROOMS:
+        response = f"Taking you to {command}."
+        command_queue.put(f"go_to_{command}")
+        pending_action = None
+        response_queue.put(response)
+        return jsonify({"response": response})
+
+    # 2. Known Command Check: Handle specific commands directly.
+    if command.lower() in ["hi", "hey", "hello"]:
+        response = "Hello there! How can I assist you today?"
+    elif command == "ASK_ADMISSION_OPEN":
         response = "Yes, would you like me to take you to it?"
         with pending_action_lock:
             pending_action = "take_to_admission"
-    elif command == "confirm_yes":
+    elif command == "KILL":
+        response = "Stopping the program. Goodbye!"
+
+    # 3. Handle Confirmations if there's a pending action
+    elif command == "CONFIRM_YES" and pending_action:
         with pending_action_lock:
             if pending_action == "take_to_admission":
                 command_queue.put("go_to_Admission")
@@ -164,17 +166,18 @@ def open_application(command):
                 pending_action = None
             else:
                 response = "Yes."
-    elif command == "confirm_no":
+    elif command == "CONFIRM_NO" and pending_action:
         with pending_action_lock:
             if pending_action == "take_to_admission":
                 response = "Okay, let me know if you need anything else."
                 pending_action = None
             else:
                 response = "Okay."
-    elif command == "none":
-        response = "I didn't understand the command."
+
+    # 4. If none of the above, use model prediction as a fallback
     else:
         response = "I didn't understand the command."
+        logging.debug(f"Command not recognized as room or specific command: {command}")
 
     response_queue.put(response)
     return jsonify({"response": response})
