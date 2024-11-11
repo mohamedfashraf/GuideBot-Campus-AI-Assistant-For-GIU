@@ -147,6 +147,22 @@ def open_application(command):
         response_queue.put(response)
         return jsonify({"response": response})
 
+    # 1b. Pattern Matching for Room Commands
+    for room in VALID_ROOMS:
+        # Check if command matches one of the generated patterns for each room
+        if command in {
+            f"GO_TO_{room}",
+            f"NAVIGATE_TO_{room}",
+            f"TAKE_ME_TO_{room}",
+            f"GO_TO_ROOM_{room}",
+            f"TAKE_ME_TO_ROOM_{room}",
+        }:
+            response = f"Taking you to {room}."
+            command_queue.put(f"go_to_{room}")
+            pending_action = None
+            response_queue.put(response)
+            return jsonify({"response": response})
+
     # 2. Known Command Check: Handle specific commands directly.
     if command.lower() in ["hi", "hey", "hello"]:
         response = "Hello there! How can I assist you today?"
@@ -192,11 +208,11 @@ def home():
 def handle_command():
     """Handles the POST request from the frontend, processes the command, and sends back a response."""
     data = request.json
-    logger.debug(f"Received data: {data}")  # Debugging statement
+    logger.debug(f"Received data: {data}")
     command_text = data.get("text", "").strip()
 
     if command_text:
-        logger.debug(f"Command received: {command_text}")  # Debugging statement
+        logger.debug(f"Command received: {command_text}")
 
         # Use hypothesis template to improve matching
         hypothesis_template = "I want to {}."
@@ -208,16 +224,15 @@ def handle_command():
             multi_label=False,
         )
 
-        logger.debug(f"Model result: {result}")  # Debugging statement
+        # Log the model's output to understand prediction
+        logger.debug(f"Model result: {result}")
         predicted_label = result["labels"][0]
         confidence = result["scores"][0]
 
-        logger.info(
-            f"Predicted label: {predicted_label} with confidence {confidence}"
-        )  # Debugging
+        logger.info(f"Predicted label: {predicted_label} with confidence {confidence}")
 
-        # If confidence is above 0.3, execute the application (lowered threshold)
-        if confidence > 0.3:
+        # Lower confidence threshold if needed
+        if confidence > 0.2:  # Adjust threshold if necessary
             return open_application(predicted_label)
         else:
             response = "I'm not sure what you meant. Can you try again?"
