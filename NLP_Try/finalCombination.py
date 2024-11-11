@@ -358,6 +358,8 @@ class CarRobot:
         self.create_sensors()
         self.path = []  # List of waypoints to follow
         self.arduino_obstacle_detected = False  # Flag for Arduino obstacle detection
+        self.obstacle_response_sent = False  # Initialize flag to prevent early responses
+        self.started_moving = False
 
     def load_image(self):
         """Load and scale the car image."""
@@ -603,13 +605,20 @@ class CarRobot:
     def update(self):
         """Update the car's state by rotating and moving towards the target."""
         if self.moving and self.current_target:
-            # Check if Arduino has detected an obstacle
+        # Set started_moving to True once movement begins
+            self.started_moving = True
+
+            # First, check if Arduino has detected an obstacle
             if self.arduino_obstacle_detected:
                 self.moving = False
                 self.state_reason = "Obstacle detected by Arduino"
+                # Send polite voice response only if not already sent and movement has started
+                if self.started_moving and not self.obstacle_response_sent:
+                    response_queue.put("Excuse me, could you please let me pass?")
+                    self.obstacle_response_sent = True
                 return
 
-            # First, check sensors for obstacles
+            # Check sensors for obstacles
             sensor_data = self.check_sensors()
             obstacles = [detected for angle, detected in sensor_data if detected]
 
@@ -621,44 +630,15 @@ class CarRobot:
                 obstacles = []
 
             if obstacles:
-                # Obstacle detected ahead, adjust path
-                left_sensor = sensor_data[0][1]
-                front_sensor = sensor_data[1][1]
-                right_sensor = sensor_data[2][1]
-
-                if front_sensor:
-                    if not left_sensor and right_sensor:
-                        # Rotate left in place
-                        self.rotate(CAR_ROTATION_SPEED)
-                        self.state_reason = "Obstacle ahead - Turning left"
-                    elif not right_sensor and left_sensor:
-                        # Rotate right in place
-                        self.rotate(-CAR_ROTATION_SPEED)
-                        self.state_reason = "Obstacle ahead - Turning right"
-                    elif not left_sensor and not right_sensor:
-                        # Choose a direction to turn, e.g., left
-                        self.rotate(CAR_ROTATION_SPEED)
-                        self.state_reason = "Obstacle ahead - Turning left"
-                    else:
-                        self.moving = False
-                        self.state_reason = "Obstacle ahead, cannot avoid"
-                else:
-                    # Side obstacles, proceed forward if facing target direction
-                    target_angle = self.get_target_angle()
-                    angle_diff = (target_angle - self.angle + 360) % 360
-                    if angle_diff > 180:
-                        angle_diff -= 360
-
-                    if abs(angle_diff) > CAR_ROTATION_SPEED:
-                        # Rotate towards target
-                        self.rotate_towards_target(target_angle)
-                        self.state_reason = "Rotating towards target"
-                    else:
-                        # Move forward
-                        self.move_forward()
-                        self.check_point_reached()
+                # Obstacle detected by sensors, stop and send response
+                self.moving = False
+                self.state_reason = "Waiting for obstacle to clear"
+                if self.started_moving and not self.obstacle_response_sent:
+                    response_queue.put("Hi! I’m the campus GuideBot. Could you help clear the way?")
+                    self.obstacle_response_sent = True
             else:
-                # No obstacle ahead, proceed towards target
+                # Clear the flag if no obstacles are detected and proceed towards target
+                self.obstacle_response_sent = False
                 target_angle = self.get_target_angle()
                 angle_diff = (target_angle - self.angle + 360) % 360
                 if angle_diff > 180:
@@ -673,28 +653,31 @@ class CarRobot:
                     self.move_forward()
                     self.check_point_reached()
         else:
+            # If not moving, check for Arduino obstacle response only if movement has started
             if self.arduino_obstacle_detected:
                 self.state_reason = "Obstacle detected by Arduino"
+                if self.started_moving and not self.obstacle_response_sent:
+                    response_queue.put("Excuse me, could you please let me pass?")
+                    self.obstacle_response_sent = True
             else:
                 self.state_reason = "Stopped"
+                self.obstacle_response_sent = False  # Reset the flag when stopped
 
     def draw_status(self, surface):
         font = pygame.font.SysFont(None, 24)
         status = "MOVING" if self.moving else "STOPPED"
-        
+
         # Render status and reason as text
         status_text = font.render(f"Robot Status: {status}", True, BLACK)
         reason_text = font.render(f"Reason: {self.state_reason}", True, BLACK)
-        
+
         # Determine the width of the status text to place reason text with a gap
         status_width = status_text.get_width()
         margin = 20  # Adjust this value for more or less space between texts
-        
+
         # Draw status and reason side by side with a margin
         surface.blit(status_text, (10, HEIGHT + 10))
         surface.blit(reason_text, (10 + status_width + margin, HEIGHT + 10))
-
-
 
     def draw(self, surface):
         """Render the car and waypoints on the screen."""
