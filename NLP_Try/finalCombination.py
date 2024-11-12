@@ -89,15 +89,13 @@ nlp = pipeline(
     clean_up_tokenization_spaces=True,
 )
 
-# Define a set of valid rooms (can be easily extended)
 VALID_ROOMS = {
     "M215",
     "M216",
-    "ADMISSION",
-    "financial",
-    "student_affairs",
+    "Admission",
+    "Financial",
+    "Student_Affairs",
 }  # Add more rooms as needed
-
 
 # Generate labels dynamically, including both prefixed and direct room names
 labels = [
@@ -109,13 +107,14 @@ labels = [
     "hi",  # Greeting
     "hey",  # Greeting
     "hello",  # Greeting
-    "financial",  # Room for financial matters
-    "student_affairs",  # Room for course-related or student affairs matters
-    "admission",  # Room for admission-related matters
+    "Financial",  # Room for financial matters
+    "Student_Affairs",  # Room for course-related or student affairs matters
+    "Admission",  # Room for admission-related matters
 ]
+
 # Add dynamic command variations for each room in VALID_ROOMS
 for room in VALID_ROOMS:
-    labels.append(room)  # Standalone room name
+    labels.append(room)  # Standalone room name (e.g., "Admission")
     labels.extend(
         [
             f"go_to_{room}",
@@ -126,10 +125,8 @@ for room in VALID_ROOMS:
         ]
     )
 
-
-# Define weekly schedule globally
 weekly_schedule = {
-    "financial": {
+    "Financial": {
         "saturday": {"opens_at": "09:00", "closes_at": "17:00"},
         "sunday": {"opens_at": "09:00", "closes_at": "17:00"},
         "monday": {"opens_at": "09:00", "closes_at": "17:00"},
@@ -137,7 +134,7 @@ weekly_schedule = {
         "wednesday": {"opens_at": "09:00", "closes_at": "17:00"},
         "thursday": {"opens_at": "09:00", "closes_at": "17:00"},
     },
-    "student_affairs": {
+    "Student_Affairs": {
         "saturday": {"opens_at": "10:00", "closes_at": "16:00"},
         "sunday": {"opens_at": "10:00", "closes_at": "16:00"},
         "monday": {"opens_at": "10:00", "closes_at": "16:00"},
@@ -145,16 +142,15 @@ weekly_schedule = {
         "wednesday": {"opens_at": "10:00", "closes_at": "16:00"},
         "thursday": {"opens_at": "10:00", "closes_at": "16:00"},
     },
-    "admission": {
+    "Admission": {
         "saturday": {"opens_at": "08:00", "closes_at": "15:00"},
         "sunday": {"opens_at": "08:00", "closes_at": "15:00"},
         "monday": {"opens_at": "08:00", "closes_at": "15:00"},
-        "tuesday": {"opens_at": "08:00", "closes_at": "15:00"},
+        "tuesday": {"opens_at": "08:00", "closes_at": "24:00"},
         "wednesday": {"opens_at": "08:00", "closes_at": "15:00"},
         "thursday": {"opens_at": "08:00", "closes_at": "15:00"},
     },
 }
-
 
 def check_room_availability(room):
     """Function to check room availability based on the current day and time."""
@@ -201,11 +197,14 @@ def open_application(command):
     response = ""
     command = command.strip().upper()
 
+    logger.debug(f"open_application called with command: {command}")
+
     # Step 1: Identify room or topic based on predefined rooms and keywords
     room = None
     for valid_room in VALID_ROOMS:
         if valid_room.upper() in command:
-            room = valid_room
+            room = valid_room  # e.g., "Admission"
+            logger.debug(f"Identified room: {room}")
             break
 
     # Additional keywords for topics if no room is detected
@@ -213,12 +212,12 @@ def open_application(command):
         if any(
             keyword in command for keyword in ["FINANCIAL", "MONEY", "PAYMENT", "PAY"]
         ):
-            room = "financial"
+            room = "Financial"
         elif any(
             keyword in command
             for keyword in ["STUDENT AFFAIRS", "COURSE", "ENROLLMENT", "ADD", "DROP"]
         ):
-            room = "student_affairs"
+            room = "Student_Affairs"
         elif any(
             keyword in command
             for keyword in [
@@ -231,13 +230,15 @@ def open_application(command):
                 "REGISTRATION",
             ]
         ):
-            room = "admission"
+            room = "Admission"
 
     # Step 2: Provide initial conversational response based on identified room
     if room:
-        response = f"It sounds like the {room.capitalize()} office is where you need to go. Would you like me to check if it's open?"
-        pending_action = f"check_availability_{room}"
+        response = f"It sounds like the {room} office is where you need to go. Would you like me to check if it's open?"
+        with pending_action_lock:
+            pending_action = f"check_availability_{room}"
         response_queue.put(response)
+        logger.info(f"Responding: {response}")
         return jsonify({"response": response})
 
     # Step 3: Check availability if pending action indicates it and user confirms
@@ -247,21 +248,22 @@ def open_application(command):
         and pending_action.startswith("check_availability_")
     ):
         room = pending_action.split("_")[-1]
+        logger.debug(f"Checking availability for room: {room}")
         availability = check_room_availability(room)
 
         if availability["is_open"]:
-            response = (
-                f"{room.capitalize()} is open. Would you like me to guide you there?"
-            )
+            response = f"{room} is open. Would you like me to guide you there?"
             with pending_action_lock:
                 pending_action = f"go_to_{room}"
+            logger.info(f"Responding: {response}")
         else:
             next_open_day, next_open_time = get_next_opening(room)
-            response = f"{room.capitalize()} is currently closed and will open on {next_open_day} at {next_open_time}. Would you like help with something else?"
+            response = f"{room} is currently closed and will open on {next_open_day} at {next_open_time}. Would you like help with something else?"
 
             # Set pending action to handle further assistance request
             with pending_action_lock:
                 pending_action = "ask_if_help_needed"
+            logger.info(f"Responding: {response}")
 
         response_queue.put(response)
         return jsonify({"response": response})
@@ -277,9 +279,11 @@ def open_application(command):
         else:
             # Fast forward if user states their request directly
             pending_action = None
+            logger.debug("User provided a direct request instead of YES/NO.")
             return open_application(command)  # Re-run to handle the direct request
 
         response_queue.put(response)
+        logger.info(f"Responding: {response}")
         return jsonify({"response": response})
 
     # Step 5: Guide the user to the room if they confirm guidance
@@ -289,16 +293,19 @@ def open_application(command):
         and pending_action.startswith("go_to_")
     ):
         room = pending_action.split("_")[-1]
+        logger.debug(f"Command received: guiding to {room}")  # Dynamic room reference
         command_queue.put(f"go_to_{room}")
-        response = f"Taking you to the {room.capitalize()} room now."
+        response = f"Taking you to the {room} room now."
         pending_action = None
         response_queue.put(response)
+        logger.info(f"Responding: {response}")
         return jsonify({"response": response})
 
     elif command == "CONFIRM_NO" and pending_action:
         response = "Okay, let me know if you need anything else."
         pending_action = None
         response_queue.put(response)
+        logger.info(f"Responding: {response}")
         return jsonify({"response": response})
 
     # Handle greetings or fallback for unrecognized commands
@@ -311,8 +318,8 @@ def open_application(command):
         response = "I didn't understand the command. Could you please rephrase?"
 
     response_queue.put(response)
+    logger.info(f"Responding: {response}")
     return jsonify({"response": response})
-
 
 # Helper function to find the next opening day and time
 def get_next_opening(room):
@@ -462,14 +469,6 @@ class CarRobot:
     def __init__(self, x, y, waypoints, waypoint_names, walls, prompt_queue):
         """
         Initialize the CarRobot.
-
-        Args:
-            x (float): Initial x-coordinate.
-            y (float): Initial y-coordinate.
-            waypoints (list): List of waypoint tuples.
-            waypoint_names (list): List of names for each waypoint.
-            walls (list): List of Wall objects for collision detection.
-            prompt_queue (queue.Queue): Queue to send prompts to the frontend.
         """
         self.start_x = x
         self.start_y = y
@@ -493,10 +492,14 @@ class CarRobot:
         self.create_sensors()
         self.path = []  # List of waypoints to follow
         self.arduino_obstacle_detected = False  # Flag for Arduino obstacle detection
-        self.obstacle_response_sent = (
-            False  # Initialize flag to prevent early responses
-        )
+        self.obstacle_response_sent = False  # Initialize flag to prevent early responses
         self.started_moving = False
+
+        # Initialize waypoint_dict inside __init__
+        self.waypoint_dict = {
+            name: position for name, position in zip(self.waypoint_names, self.waypoints)
+        }
+        logger.info(f"Waypoint Dictionary Initialized: {self.waypoint_dict}")
 
     def load_image(self):
         """Load and scale the car image."""
@@ -716,26 +719,26 @@ class CarRobot:
             )  # Reset position if collision occurs
         return collision
 
+
     def set_target(self, target_point, destination_name):
         self.destination_name = destination_name
         self.moving = True
         self.state_reason = f"Moving towards {destination_name}"
         self.update_sensors()
         path_key = (self.current_location_name, destination_name)
+
         if path_key in self.waypoint_paths:
             self.path = [
                 self.waypoint_dict[wp_name] for wp_name in self.waypoint_paths[path_key]
             ]
             self.current_target = self.path.pop(0)
+            logger.debug(f"Path found for {path_key}: {self.path}")
         else:
             self.current_target = target_point
             self.path = []
-        logger.info(f"Set target for {destination_name}: {self.current_target}")
+            logger.debug(f"No predefined path for {path_key}. Directly setting target.")
 
-    def return_to_start(self):
-        """Move the car back to the starting position."""
-        self.is_returning_to_start = True
-        self.set_target((self.start_x, self.start_y), "Start")
+        logger.info(f"Set target for {destination_name}: {self.current_target}")
 
     def update(self):
         """Update the car's state by rotating and moving towards the target."""
@@ -851,22 +854,14 @@ class CarRobot:
             img = font.render(self.waypoint_names[idx], True, BLACK)
             surface.blit(img, (wp_x + 10, wp_y - 10))
 
-    # Define the predefined paths between waypoints
+    # Define the predefined paths between waypoints with consistent casing
     waypoint_paths = {
         ("Start", "M215"): ["M215"],
         ("M215", "M216"): ["M216"],
         ("M216", "Admission"): ["Admission"],
-        ("Admission", "Start"): [
-            "M216",
-            "M215",
-            "Start",
-        ],  # Updated path to avoid blocked route
+        ("Admission", "Start"): ["M216", "M215", "Start"],  # Updated path to avoid blocked route
         ("Start", "M216"): ["M215", "M216"],
-        ("Start", "Admission"): [
-            "M215",
-            "M216",
-            "Admission",
-        ],  # Must go through M215 and M216
+        ("Start", "Admission"): ["M215", "M216", "Admission"],  # Must go through M215 and M216
         ("M215", "Admission"): ["M216", "Admission"],
         ("M216", "M215"): ["M215"],
         ("M216", "Start"): ["M215", "Start"],
@@ -876,7 +871,7 @@ class CarRobot:
         # Add more paths as needed
     }
 
-    # Placeholder for the waypoint dictionary (to be set in Game class)
+    # Map waypoint names to positions with consistent casing
     waypoint_dict = {}
 
 
@@ -1085,12 +1080,24 @@ class Game:
         """
         self.serial_reader.send_command(command)
 
+
     def process_commands(self):
         try:
             while True:
                 command = command_queue.get_nowait()
+                logger.info(f"Processing command from Flask: {command}")
                 if command.startswith("go_to_"):
-                    room = command.split("_")[-1]  # Extract the room name dynamically
+                    # Extract the room name dynamically, accounting for possible underscores
+                    parts = command.split("_", 2)
+                    if len(parts) >= 3:
+                        room = parts[2]
+                    else:
+                        room = parts[-1]
+
+                    # Handle rooms with underscores (e.g., "Student_Affairs")
+                    room = room.replace("_", " ")  # Optional: Adjust based on naming
+
+                    # Check if the room exists in waypoint_names
                     if room in self.waypoint_names:
                         target_point = self.waypoint_dict[room]
                         self.car.set_target(target_point, room)
