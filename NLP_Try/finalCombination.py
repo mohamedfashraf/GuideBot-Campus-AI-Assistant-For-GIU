@@ -82,15 +82,12 @@ logger = logging.getLogger(__name__)
 
 # -------------------- Flask App Setup ---------------------#
 
-# Initialize the zero-shot classification pipeline with adjusted parameters
-# Initialize the zero-shot classification pipeline with multi-label enabled
+# Initialize the zero-shot classification pipeline
 nlp = pipeline(
     "zero-shot-classification",
     model="facebook/bart-large-mnli",
     clean_up_tokenization_spaces=True,
-    multi_label=True,  # Enable multi-label classification
 )
-
 
 VALID_ROOMS = {
     "M215",
@@ -100,80 +97,117 @@ VALID_ROOMS = {
     "Student_Affairs",
 }  # Add more rooms as needed
 
-# Define separate labels for intents and rooms
-intents = [
-    "Greeting",  # Handles "hi", "hey", "hello"
-    "Farewell",  # Handles "bye", "goodbye", etc.
-    "Apply",  # Intent to apply for something
-    "Enroll",  # Intent to enroll in something
-    "Navigate",  # Intent to navigate to a location
-    "Payment",  # Intent to make a payment
-    "Registration",  # Intent to register for something
-    "Help",  # General help intent
+# Expanded labels with synonyms and related terms
+labels = [
+    "kill",
+    "ask_admission_open",
+    "confirm_yes",
+    "confirm_no",
+    "none",
+    "hi",
+    "hey",
+    "hello",
+    # Financial matters
+    "financial",
+    "finance office",
+    "tuition payment",
+    "pay tuition",
+    "scholarship",
+    "billing",
+    # Student affairs
+    "student affairs",
+    "course enrollment",
+    "add course",
+    "drop course",
+    "class schedule",
+    "enrollment services",
+    # Admissions
+    "admission",
+    "apply to university",
+    "application",
+    "enroll",
+    "registration",
+    "apply",
 ]
-
-rooms = list(VALID_ROOMS)  # Rooms defined earlier: "M215", "M216", etc.
-
-# Combine intents and rooms into a single labels list
-labels = intents + rooms
 
 # Add dynamic command variations for each room in VALID_ROOMS
 for room in VALID_ROOMS:
-    # Add room-specific intents with synonyms and varied expressions
+    room_lower = room.lower()
+    labels.append(room_lower)
     labels.extend(
         [
-            f"Go to {room}",
-            f"Navigate to {room}",
-            f"Take me to {room}",
-            f"Go to the {room} office",
-            f"Navigate to the {room} office",
-            f"Take me to the {room} office",
-            f"Apply at {room}",
-            f"Apply for {room}",
-            f"Apply for {room} office",
-            f"Enroll at {room}",
-            f"Registration at {room}",
-            f"Payment at {room}",
-            f"Course registration at {room}",
-            f"Submit application at {room}",
-            f"{room} application",
-            f"Financial payment at {room}",
-            f"Make a payment at {room}",
-            f"Pay fees at {room}",
-            f"Student affairs enrollment at {room}",
-            f"Add course at {room}",
-            f"Drop course at {room}",
-            f"Financial transaction at {room}",
-            f"Apply for the next semester at {room}",  # Specific user input
+            f"go to {room_lower}",
+            f"navigate to {room_lower}",
+            f"take me to {room_lower}",
+            f"go to room {room_lower}",
+            f"take me to room {room_lower}",
         ]
     )
 
 weekly_schedule = {
     "Financial": {
-        "saturday": {"opens_at": "09:00", "closes_at": "17:00"},
-        "sunday": {"opens_at": "09:00", "closes_at": "17:00"},
-        "monday": {"opens_at": "09:00", "closes_at": "17:00"},
-        "tuesday": {"opens_at": "09:00", "closes_at": "17:00"},
-        "wednesday": {"opens_at": "09:00", "closes_at": "17:00"},
-        "thursday": {"opens_at": "09:00", "closes_at": "17:00"},
+        "saturday": {"opens_at": "09:00", "closes_at": "23:00"},
+        "sunday": {"opens_at": "09:00", "closes_at": "23:00"},
+        "monday": {"opens_at": "09:00", "closes_at": "23:00"},
+        "tuesday": {"opens_at": "09:00", "closes_at": "23:00"},
+        "wednesday": {"opens_at": "09:00", "closes_at": "23:00"},
+        "thursday": {"opens_at": "09:00", "closes_at": "23:00"},
     },
     "Student_Affairs": {
-        "saturday": {"opens_at": "10:00", "closes_at": "16:00"},
-        "sunday": {"opens_at": "10:00", "closes_at": "16:00"},
-        "monday": {"opens_at": "10:00", "closes_at": "16:00"},
-        "tuesday": {"opens_at": "10:00", "closes_at": "16:00"},
-        "wednesday": {"opens_at": "10:00", "closes_at": "16:00"},
-        "thursday": {"opens_at": "10:00", "closes_at": "16:00"},
+        "saturday": {"opens_at": "10:00", "closes_at": "23:00"},
+        "sunday": {"opens_at": "10:00", "closes_at": "23:00"},
+        "monday": {"opens_at": "10:00", "closes_at": "23:00"},
+        "tuesday": {"opens_at": "10:00", "closes_at": "23:00"},
+        "wednesday": {"opens_at": "10:00", "closes_at": "23:00"},
+        "thursday": {"opens_at": "10:00", "closes_at": "23:00"},
     },
     "Admission": {
-        "saturday": {"opens_at": "08:00", "closes_at": "15:00"},
-        "sunday": {"opens_at": "08:00", "closes_at": "15:00"},
-        "monday": {"opens_at": "08:00", "closes_at": "15:00"},
-        "tuesday": {"opens_at": "08:00", "closes_at": "24:00"},
-        "wednesday": {"opens_at": "08:00", "closes_at": "15:00"},
-        "thursday": {"opens_at": "08:00", "closes_at": "15:00"},
+        "saturday": {"opens_at": "08:00", "closes_at": "23:00"},
+        "sunday": {"opens_at": "08:00", "closes_at": "23:00"},
+        "monday": {"opens_at": "08:00", "closes_at": "23:00"},
+        "tuesday": {"opens_at": "08:00", "closes_at": "23:00"},
+        "wednesday": {"opens_at": "08:00", "closes_at": "23:00"},
+        "thursday": {"opens_at": "08:00", "closes_at": "23:00"},
     },
 }
+
+doctor_availability = {
+    "dr-slim": {
+        "Friday": [
+            "08:30 - 10:00",
+            "10:15 - 11:45",
+            "12:00 - 13:30",
+            "13:45 - 15:15",
+            "15:45 - 17:15",
+        ],
+        "Saturday": [
+            "08:30 - 10:00",
+            "10:15 - 11:45",
+        ],
+    },
+    "dr-nada": {
+        "Friday": [
+            "08:30 - 10:00",
+            "10:15 - 11:45",
+            "12:00 - 13:30",
+        ],
+        "Saturday": [
+            "09:00 - 10:30",
+            "11:00 - 12:30",
+        ],
+    },
+    "dr-omar": {
+        "Friday": [
+            "10:00 - 11:30",
+            "12:00 - 13:30",
+        ],
+        "Saturday": [
+            "08:30 - 10:00",
+            "11:15 - 12:45",
+        ],
+    },
+}
+
 
 def check_room_availability(room):
     """Function to check room availability based on the current day and time."""
@@ -215,154 +249,183 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 
-def open_application(command_label):
+def is_affirmative(response):
+    """Check if the response is affirmative."""
+    affirmative_responses = [
+        "yes",
+        "yeah",
+        "yep",
+        "sure",
+        "please do",
+        "of course",
+        "affirmative",
+    ]
+    return any(word in response.lower() for word in affirmative_responses)
+
+
+def is_negative(response):
+    """Check if the response is negative."""
+    negative_responses = ["no", "nope", "not now", "maybe later", "negative"]
+    return any(word in response.lower() for word in negative_responses)
+
+
+def open_application(command, original_command_text):
     global pending_action
     response = ""
+    command = command.strip().lower()
 
-    logger.debug(f"open_application called with command_label: {command_label}")
+    logger.debug(f"open_application called with command: {command}")
+    logger.debug(f"Original command text: {original_command_text}")
 
-    # Step 1: Handle Greeting and Farewell Intents
-    if command_label == "Greeting":
-        response = "Hello there! How can I assist you today?"
-        response_queue.put(response)
-        logger.info(f"Responding: {response}")
-        return jsonify({"response": response})
+    # Step 1: Identify room or topic based on predefined rooms and keywords
+    room = None
 
-    elif command_label == "Farewell":
-        response = "Goodbye! Have a great day."
-        response_queue.put(response)
-        logger.info(f"Responding: {response}")
-        return jsonify({"response": response})
+    # Check for pending actions that require a simple yes/no response
+    if pending_action and pending_action.startswith("check_availability_"):
+        if is_affirmative(original_command_text):
+            room = pending_action.split("_")[-1]
+            logger.debug(f"User confirmed to check availability for room: {room}")
+            availability = check_room_availability(room)
 
-    # Step 2: Handle Intent and Room Commands
-    elif " at " in command_label:
-        # Split the command_label into intent and room
-        intent, room = command_label.split(" at ", 1)
-        intent = intent.strip()
-        room = room.strip()
-
-        logger.debug(f"Handling intent '{intent}' for room '{room}'")
-
-        if room not in VALID_ROOMS:
-            response = f"I couldn't find the {room} office. Could you please specify a valid room?"
-            response_queue.put(response)
-            return jsonify({"response": response})
-
-        if intent in ["Apply", "Enroll", "Navigate", "Payment", "Registration"]:
-            if intent == "Navigate":
-                action = "navigate"
+            if availability["is_open"]:
+                response = f"{room} is open. Would you like me to guide you there?"
+                with pending_action_lock:
+                    pending_action = f"go_to_{room}"
+                logger.info(f"Responding: {response}")
             else:
-                action = intent.lower()
+                next_open_day, next_open_time = get_next_opening(room)
+                response = f"{room} is currently closed and will open on {next_open_day} at {next_open_time}. Would you like help with something else?"
 
-            # Provide initial conversational response based on identified room
-            response = f"It sounds like you want to {action} at the {room} office. Would you like me to check if it's open?"
-            with pending_action_lock:
-                pending_action = f"check_availability_{room}"
-            response_queue.put(response)
-            logger.info(f"Responding: {response}")
-            return jsonify({"response": response})
-        else:
-            response = "I'm not sure how to assist with that action. Could you please provide more details?"
+                # Set pending action to handle further assistance request
+                with pending_action_lock:
+                    pending_action = "ask_if_help_needed"
+                logger.info(f"Responding: {response}")
+
             response_queue.put(response)
             return jsonify({"response": response})
 
-    # Step 3: Check availability if pending action indicates it and user confirms
-    elif (
-        command_label == "CONFIRM_YES"
-        and pending_action
-        and pending_action.startswith("check_availability_")
-    ):
-        room = pending_action.split("_")[-1]
-        logger.debug(f"Checking availability for room: {room}")
-        availability = check_room_availability(room)
-
-        if availability["is_open"]:
-            response = f"{room} is open. Would you like me to guide you there?"
-            with pending_action_lock:
-                pending_action = f"go_to_{room}"
+        elif is_negative(original_command_text):
+            response = "Okay, let me know if you need anything else."
+            pending_action = None
+            response_queue.put(response)
             logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
+
         else:
-            next_open_day, next_open_time = get_next_opening(room)
-            response = f"{room} is currently closed and will open on {next_open_day} at {next_open_time}. Would you like help with something else?"
-
-            # Set pending action to handle further assistance request
-            with pending_action_lock:
-                pending_action = "ask_if_help_needed"
+            response = "I'm sorry, I didn't catch that. Please say yes or no."
+            response_queue.put(response)
             logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
 
-        response_queue.put(response)
-        return jsonify({"response": response})
+    elif pending_action and pending_action.startswith("go_to_"):
+        if is_affirmative(original_command_text):
+            room = pending_action.split("_")[-1]
+            logger.debug(f"User confirmed to go to room: {room}")
+            command_queue.put(f"go_to_{room}")
+            response = f"Taking you to the {room} now."
+            pending_action = None
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
 
-    # Step 4: Handle further assistance request based on user response
+        elif is_negative(original_command_text):
+            response = "Okay, let me know if you need anything else."
+            pending_action = None
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
+
+        else:
+            response = "I'm sorry, I didn't catch that. Please say yes or no."
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
+
     elif pending_action == "ask_if_help_needed":
-        if command_label == "YES":
+        if is_affirmative(original_command_text):
             response = "Great! What would you like help with?"
-            pending_action = None  # Reset pending_action to allow new commands
-        elif command_label == "NO":
-            response = "Fine, do you need any other help?"
-            with pending_action_lock:
-                pending_action = "handle_additional_help"
+            pending_action = None
+        elif is_negative(original_command_text):
+            response = "Okay, feel free to ask if you need any assistance. Goodbye!"
+            pending_action = None
         else:
             # Fast forward if user states their request directly
             pending_action = None
             logger.debug("User provided a direct request instead of YES/NO.")
             return open_application(
-                command_label
+                command, original_command_text
             )  # Re-run to handle the direct request
 
         response_queue.put(response)
         logger.info(f"Responding: {response}")
         return jsonify({"response": response})
 
-    # Step 6: Handle the response to "Fine, do you need any other help?"
-    elif pending_action == "handle_additional_help":
-        if command_label == "YES":
-            response = "Please provide your next command."
-            pending_action = None  # Allow the user to input a new command
-        elif command_label == "NO":
-            response = "Okay, returning to the start point."
-            # Queue the command to navigate to the Start point
-            command_queue.put("go_to_Start")
-            pending_action = None  # Reset pending_action
-        else:
-            # If the user provides an unrecognized response
-            response = "I didn't understand that. Returning to the start point."
-            command_queue.put("go_to_Start")
-            pending_action = None  # Reset pending_action
+    # If no pending action requiring yes/no, proceed with normal processing
+    # Step 1: Identify room or topic based on predefined rooms and keywords
+    for valid_room in VALID_ROOMS:
+        if valid_room.lower() in command:
+            room = valid_room  # e.g., "Admission"
+            logger.debug(f"Identified room: {room}")
+            break
 
-        response_queue.put(response)
-        logger.info(f"Responding: {response}")
-        return jsonify({"response": response})
+    # Additional keywords for topics if no room is detected
+    if not room:
+        if any(
+            keyword in command
+            for keyword in [
+                "financial",
+                "money",
+                "payment",
+                "pay",
+                "tuition",
+                "fee",
+                "scholarship",
+                "billing",
+            ]
+        ):
+            room = "Financial"
+        elif any(
+            keyword in command
+            for keyword in [
+                "student affairs",
+                "course",
+                "enrollment",
+                "add",
+                "drop",
+                "class schedule",
+                "enrollment services",
+            ]
+        ):
+            room = "Student_Affairs"
+        elif any(
+            keyword in command
+            for keyword in [
+                "admission",
+                "apply",
+                "application",
+                "enroll",
+                "registration",
+                "apply to university",
+            ]
+        ):
+            room = "Admission"
 
-    # Step 5: Guide the user to the room if they confirm guidance
-    elif (
-        command_label == "CONFIRM_YES"
-        and pending_action
-        and pending_action.startswith("go_to_")
-    ):
-        room = pending_action.split("_")[-1]
-        logger.debug(f"Command received: guiding to {room}")  # Dynamic room reference
-        command_queue.put(f"go_to_{room}")
-        response = f"Taking you to the {room} room now."
-        pending_action = None
-        response_queue.put(response)
-        logger.info(f"Responding: {response}")
-        return jsonify({"response": response})
-
-    elif command_label == "CONFIRM_NO" and pending_action:
-        response = "Okay, let me know if you need anything else."
-        pending_action = None
+    # Step 2: Provide initial conversational response based on identified room
+    if room:
+        response = f"It sounds like the {room} office is where you need to go. Would you like me to check if it's open?"
+        with pending_action_lock:
+            pending_action = f"check_availability_{room}"
         response_queue.put(response)
         logger.info(f"Responding: {response}")
         return jsonify({"response": response})
 
     # Handle greetings or fallback for unrecognized commands
-    elif command_label in ["Greeting", "hi", "hey", "hello"]:
+    elif command.lower() in ["hi", "hey", "hello"]:
         response = "Hello there! How can I assist you today?"
-    elif command_label in ["Farewell", "bye", "goodbye"]:
-        response = "Goodbye! Have a great day."
+    elif command == "kill":
+        response = "Stopping the program. Goodbye!"
     else:
-        response = "I'm not sure what you meant. Could you please rephrase?"
+        response = "I didn't understand the command. Could you please rephrase?"
 
     response_queue.put(response)
     logger.info(f"Responding: {response}")
@@ -403,6 +466,18 @@ def home():
     return render_template("index.html")
 
 
+@app.route("/doctor_availability", methods=["GET"])
+def get_doctor_availability():
+    """Fetch doctor availability."""
+    doctor_id = request.args.get("doctor_id")
+    if doctor_id:
+        availability = doctor_availability.get(doctor_id, {})
+        if availability:
+            return jsonify({"status": "success", "data": availability})
+        return jsonify({"status": "error", "message": "Doctor not found"}), 404
+    return jsonify({"status": "success", "data": doctor_availability})
+
+
 @app.route("/command", methods=["POST"])
 def handle_command():
     """Handles the POST request from the frontend, processes the command, and sends back a response."""
@@ -413,72 +488,43 @@ def handle_command():
     if command_text:
         logger.debug(f"Command received: {command_text}")
 
-        # Define a comprehensive hypothesis template
-        hypothesis_template = "The user wants to {}."
+        # Check if there's a pending action that requires a yes/no response
+        if pending_action and (
+            pending_action.startswith("check_availability_")
+            or pending_action.startswith("go_to_")
+            or pending_action == "ask_if_help_needed"
+        ):
+            # Pass the original command text to open_application for processing
+            return open_application(command_text, command_text)
+
+        # Use a more general hypothesis template
+        hypothesis_template = "This text is about {}."
 
         result = nlp(
             command_text,
             candidate_labels=labels,
             hypothesis_template=hypothesis_template,
-            multi_label=True,  # Enable multi-label predictions
+            multi_label=True,  # Allow multi-label classification
         )
 
-        # Log the model's output to understand prediction
         logger.debug(f"Model result: {result}")
-        predicted_labels = result["labels"]
-        scores = result["scores"]
 
-        logger.info(f"Predicted labels: {predicted_labels} with scores {scores}")
-
-        # Set a confidence threshold
-        threshold = 0.2  # Adjust based on testing
-
-        # Extract intents and rooms based on the confidence threshold
-        detected_intents = [
+        # Process all labels above a confidence threshold
+        confidence_threshold = 0.3  # Adjust as needed
+        matched_labels = [
             label
-            for label, score in zip(predicted_labels, scores)
-            if label in intents and score > threshold
-        ]
-        detected_rooms = [
-            label
-            for label, score in zip(predicted_labels, scores)
-            if label in rooms and score > threshold
+            for label, score in zip(result["labels"], result["scores"])
+            if score > confidence_threshold
         ]
 
-        logger.info(f"Detected intents: {detected_intents}")
-        logger.info(f"Detected rooms: {detected_rooms}")
+        logger.info(f"Matched labels: {matched_labels}")
 
-        response = ""
-
-        if detected_intents:
-            intent = detected_intents[0]  # Assume the highest confidence intent
-            logger.debug(f"Handling intent: {intent}")
-
-            if intent in ["Greeting", "Farewell"]:
-                return open_application(intent)
-            elif intent in [
-                "Apply",
-                "Enroll",
-                "Navigate",
-                "Payment",
-                "Registration",
-                "Help",
-            ]:
-                if detected_rooms:
-                    room = detected_rooms[0]  # Assume the highest confidence room
-                    return open_application(f"{intent} at {room}")
-                else:
-                    # Handle cases where intent is detected but room isn't
-                    response = f"It sounds like you want to {intent.lower()}. Which office or room are you referring to?"
-                    response_queue.put(response)
-                    return jsonify({"response": response})
-            else:
-                # Handle other intents if necessary
-                response = "I'm not sure how to assist with that. Could you please provide more details?"
-                response_queue.put(response)
-                return jsonify({"response": response})
+        if matched_labels:
+            # Use the highest confidence label
+            predicted_label = matched_labels[0]
+            return open_application(predicted_label, command_text)
         else:
-            response = "I'm not sure what you meant. Could you please rephrase?"
+            response = "I'm not sure what you meant. Can you try again?"
             response_queue.put(response)
             return jsonify({"response": response})
 
@@ -584,12 +630,15 @@ class CarRobot:
         self.create_sensors()
         self.path = []  # List of waypoints to follow
         self.arduino_obstacle_detected = False  # Flag for Arduino obstacle detection
-        self.obstacle_response_sent = False  # Initialize flag to prevent early responses
+        self.obstacle_response_sent = (
+            False  # Initialize flag to prevent early responses
+        )
         self.started_moving = False
 
         # Initialize waypoint_dict inside __init__
         self.waypoint_dict = {
-            name: position for name, position in zip(self.waypoint_names, self.waypoints)
+            name: position
+            for name, position in zip(self.waypoint_names, self.waypoints)
         }
         logger.info(f"Waypoint Dictionary Initialized: {self.waypoint_dict}")
 
@@ -629,6 +678,29 @@ class CarRobot:
                     break
             sensor_data.append((sensor_angle, obstacle_detected))
         return sensor_data
+
+    def return_to_start(self):
+        """Set the waypoints for the car to return to the starting point."""
+        # Define the path back to start using pre-defined waypoints
+        if self.current_location_name != "Start":
+            path_key = (self.current_location_name, "Start")
+            if path_key in self.waypoint_paths:
+                self.path = [
+                    self.waypoint_dict[wp_name]
+                    for wp_name in self.waypoint_paths[path_key]
+                ]
+                self.current_target = self.path.pop(0)
+                self.destination_name = "Start"
+                self.moving = True
+                self.is_returning_to_start = True  # Flag to indicate return journey
+                self.state_reason = "Returning to start via checkpoints"
+                logger.info(
+                    f"Returning to start from {self.current_location_name} following checkpoints."
+                )
+            else:
+                logger.warning(
+                    f"No return path defined from {self.current_location_name} to Start."
+                )
 
     def line_rect_intersect(self, line, rect):
         """Check if a line intersects with a rectangle."""
@@ -811,7 +883,6 @@ class CarRobot:
             )  # Reset position if collision occurs
         return collision
 
-
     def set_target(self, target_point, destination_name):
         self.destination_name = destination_name
         self.moving = True
@@ -951,9 +1022,17 @@ class CarRobot:
         ("Start", "M215"): ["M215"],
         ("M215", "M216"): ["M216"],
         ("M216", "Admission"): ["Admission"],
-        ("Admission", "Start"): ["M216", "M215", "Start"],  # Updated path to avoid blocked route
+        ("Admission", "Start"): [
+            "M216",
+            "M215",
+            "Start",
+        ],  # Updated path to avoid blocked route
         ("Start", "M216"): ["M215", "M216"],
-        ("Start", "Admission"): ["M215", "M216", "Admission"],  # Must go through M215 and M216
+        ("Start", "Admission"): [
+            "M215",
+            "M216",
+            "Admission",
+        ],  # Must go through M215 and M216
         ("M215", "Admission"): ["M216", "Admission"],
         ("M216", "M215"): ["M215"],
         ("M216", "Start"): ["M215", "Start"],
@@ -1172,22 +1251,14 @@ class Game:
         """
         self.serial_reader.send_command(command)
 
-
     def process_commands(self):
         try:
             while True:
                 command = command_queue.get_nowait()
                 logger.info(f"Processing command from Flask: {command}")
                 if command.startswith("go_to_"):
-                    # Extract the room name dynamically, accounting for possible underscores
-                    parts = command.split("_", 2)
-                    if len(parts) >= 3:
-                        room = parts[2]
-                    else:
-                        room = parts[-1]
-
-                    # Handle rooms with underscores (e.g., "Student_Affairs")
-                    room = room.replace("_", " ")  # Optional: Adjust based on naming
+                    # Extract the room name dynamically
+                    room = command.split("_", 2)[-1].replace("_", " ")
 
                     # Check if the room exists in waypoint_names
                     if room in self.waypoint_names:
@@ -1311,7 +1382,6 @@ class Game:
 
 
 # -------------------- Main Block ---------------------#
-
 
 if __name__ == "__main__":
     try:
