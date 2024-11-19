@@ -1,0 +1,1 @@
+pip install pygame flask flask-cors flask-socketio eventlet gtts transformers pydub pyserial
