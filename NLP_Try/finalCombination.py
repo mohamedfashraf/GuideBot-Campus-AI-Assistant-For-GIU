@@ -89,14 +89,15 @@ nlp = pipeline(
     clean_up_tokenization_spaces=True,
 )
 
+# Valid rooms with consistent naming (Title Case, underscores)
 VALID_ROOMS = {
     "M215",
     "M216",
     "Admission",
     "Financial",
     "Student_Affairs",
-    "Dr_Nada",  # Added Dr. Nada's office as a valid room
-}  # Add more rooms as needed
+    "Dr_Nada",
+}
 
 # Expanded labels with synonyms and related terms
 labels = [
@@ -144,7 +145,7 @@ labels = [
 
 # Add dynamic command variations for each room in VALID_ROOMS
 for room in VALID_ROOMS:
-    room_lower = room.lower()
+    room_lower = room.replace("_", " ").lower()
     labels.append(room_lower)
     labels.extend(
         [
@@ -184,6 +185,7 @@ weekly_schedule = {
         "thursday": {"opens_at": "08:00", "closes_at": "23:00"},
         "friday": {"opens_at": "08:00", "closes_at": "23:00"},
     },
+    # Removed "Dr_Nada" from weekly_schedule as per your request
 }
 
 # Updated doctor_availability with the same times for each day
@@ -279,8 +281,6 @@ CORS(app)  # Enable CORS for all routes if frontend is on a different origin
 pending_action = None
 pending_action_lock = Lock()
 
-import logging
-
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
@@ -352,10 +352,11 @@ def open_application(command, original_command_text):
 
     elif pending_action and pending_action.startswith("go_to_"):
         if is_affirmative(original_command_text):
-            room = pending_action.split("_", 2)[-1]
-            logger.debug(f"User confirmed to go to room: {room}")
-            command_queue.put(f"go_to_{room}")
-            response = f"Taking you to the {room.replace('_', ' ')} now."
+            room = pending_action[len("go_to_") :]
+            room_normalized = room.replace("-", "_").replace(" ", "_").title()
+            logger.debug(f"User confirmed to go to room: {room_normalized}")
+            command_queue.put(f"go_to_{room_normalized}")
+            response = f"Taking you to the {room_normalized.replace('_', ' ')} now."
             pending_action = None
             response_queue.put(response)
             logger.info(f"Responding: {response}")
@@ -401,7 +402,7 @@ def open_application(command, original_command_text):
             if availability["is_available"]:
                 response = f"{doctor_id.replace('-', ' ').title()} is available now. Would you like me to guide you to their office?"
                 with pending_action_lock:
-                    pending_action = f"go_to_{doctor_id.replace('-', '_')}"
+                    pending_action = f"go_to_{doctor_id.replace('-', '_').title()}"
                 logger.info(f"Responding: {response}")
             else:
                 response = f"{doctor_id.replace('-', ' ').title()} is not available now. {availability['next_availability']}. Would you like help with something else?"
@@ -430,7 +431,7 @@ def open_application(command, original_command_text):
     room = None
 
     for valid_room in VALID_ROOMS:
-        if valid_room.lower() in command:
+        if valid_room.replace("_", " ").lower() in command:
             room = valid_room  # e.g., "Admission"
             logger.debug(f"Identified room: {room}")
             break
@@ -987,7 +988,7 @@ class CarRobot:
                 destination_name = self.current_location_name
                 if not self.is_returning_to_start:
                     # Send prompt to frontend
-                    prompt_message = f"Reached {destination_name}"
+                    prompt_message = f"Reached {destination_name.replace('_', ' ')}"
                     self.prompt_queue.put(prompt_message)
                     self.state_reason = "Awaiting user choice"
                 else:
@@ -1051,7 +1052,7 @@ class CarRobot:
     def set_target(self, target_point, destination_name):
         self.destination_name = destination_name
         self.moving = True
-        self.state_reason = f"Moving towards {destination_name}"
+        self.state_reason = f"Moving towards {destination_name.replace('_', ' ')}"
         self.update_sensors()
         path_key = (self.current_location_name, destination_name)
 
@@ -1206,6 +1207,8 @@ class CarRobot:
         ("M215", "Start"): ["Start"],
         ("Start", "Dr_Nada"): ["M215", "M216", "Dr_Nada"],
         ("Dr_Nada", "Start"): ["M216", "M215", "Start"],
+        ("M216", "Dr_Nada"): ["Dr_Nada"],
+        ("Dr_Nada", "M216"): ["M216"],
         # Add more paths as needed
     }
 
@@ -1367,7 +1370,7 @@ class Game:
             (600, 150),  # M215
             (600, 450),  # M216
             (150, 450),  # Admission
-            (375, 300),  # Dr_Nada's office
+            (500, 300),  # Dr_Nada's office (Updated position)
         ]
         self.waypoint_names = [
             "Start",
@@ -1427,16 +1430,19 @@ class Game:
                 logger.info(f"Processing command from Flask: {command}")
                 if command.startswith("go_to_"):
                     # Extract the room name dynamically
-                    room = command.split("_", 2)[-1].replace("_", " ")
+                    room = command[len("go_to_") :]  # Get the substring after 'go_to_'
+                    room_normalized = room.replace("-", "_").replace(" ", "_").title()
 
                     # Check if the room exists in waypoint_names
-                    if room in self.waypoint_names:
-                        target_point = self.waypoint_dict[room]
-                        self.car.set_target(target_point, room)
-                        logger.info(f"Setting target to {room}: {target_point}")
+                    if room_normalized in self.waypoint_names:
+                        target_point = self.waypoint_dict[room_normalized]
+                        self.car.set_target(target_point, room_normalized)
+                        logger.info(
+                            f"Setting target to {room_normalized}: {target_point}"
+                        )
                         self.send_command("START_SERVO")
                     else:
-                        logger.warning(f"Unknown room: {room}")
+                        logger.warning(f"Unknown room: {room_normalized}")
                 elif command == "user_choice_done":
                     self.car.return_to_start()
                     response_queue.put("Goodbye, going to start point.")
