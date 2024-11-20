@@ -95,6 +95,7 @@ VALID_ROOMS = {
     "Admission",
     "Financial",
     "Student_Affairs",
+    "Dr_Nada",  # Added Dr. Nada's office as a valid room
 }  # Add more rooms as needed
 
 # Expanded labels with synonyms and related terms
@@ -128,6 +129,17 @@ labels = [
     "enroll",
     "registration",
     "apply",
+    # Computer Science Major
+    "computer science major",
+    "cs major",
+    "tell me about computer science",
+    "i want to study computer science",
+    "computer science information",
+    "computer science department",
+    "cs department",
+    "dr nada",
+    "see dr nada",
+    "visit dr nada",
 ]
 
 # Add dynamic command variations for each room in VALID_ROOMS
@@ -152,6 +164,7 @@ weekly_schedule = {
         "tuesday": {"opens_at": "09:00", "closes_at": "23:00"},
         "wednesday": {"opens_at": "09:00", "closes_at": "23:00"},
         "thursday": {"opens_at": "09:00", "closes_at": "23:00"},
+        "friday": {"opens_at": "09:00", "closes_at": "23:00"},
     },
     "Student_Affairs": {
         "saturday": {"opens_at": "10:00", "closes_at": "23:00"},
@@ -160,6 +173,7 @@ weekly_schedule = {
         "tuesday": {"opens_at": "10:00", "closes_at": "23:00"},
         "wednesday": {"opens_at": "10:00", "closes_at": "23:00"},
         "thursday": {"opens_at": "10:00", "closes_at": "23:00"},
+        "friday": {"opens_at": "10:00", "closes_at": "23:00"},
     },
     "Admission": {
         "saturday": {"opens_at": "08:00", "closes_at": "23:00"},
@@ -168,43 +182,65 @@ weekly_schedule = {
         "tuesday": {"opens_at": "08:00", "closes_at": "23:00"},
         "wednesday": {"opens_at": "08:00", "closes_at": "23:00"},
         "thursday": {"opens_at": "08:00", "closes_at": "23:00"},
+        "friday": {"opens_at": "08:00", "closes_at": "23:00"},
     },
 }
 
+# Updated doctor_availability with the same times for each day
 doctor_availability = {
     "dr-slim": {
-        "Friday": [
+        day: [
             "08:30 - 10:00",
             "10:15 - 11:45",
             "12:00 - 13:30",
             "13:45 - 15:15",
             "15:45 - 17:15",
-        ],
-        "Saturday": [
-            "08:30 - 10:00",
-            "10:15 - 11:45",
-        ],
+        ]
+        for day in [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+        ]
     },
     "dr-nada": {
-        "Friday": [
+        day: [
             "08:30 - 10:00",
             "10:15 - 11:45",
             "12:00 - 13:30",
-        ],
-        "Saturday": [
-            "09:00 - 10:30",
-            "11:00 - 12:30",
-        ],
+            "13:45 - 15:15",
+            "15:45 - 17:15",
+        ]
+        for day in [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+        ]
     },
     "dr-omar": {
-        "Friday": [
-            "10:00 - 11:30",
-            "12:00 - 13:30",
-        ],
-        "Saturday": [
+        day: [
             "08:30 - 10:00",
-            "11:15 - 12:45",
-        ],
+            "10:15 - 11:45",
+            "12:00 - 13:30",
+            "13:45 - 15:15",
+            "15:45 - 17:15",
+        ]
+        for day in [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+        ]
     },
 }
 
@@ -277,9 +313,6 @@ def open_application(command, original_command_text):
     logger.debug(f"open_application called with command: {command}")
     logger.debug(f"Original command text: {original_command_text}")
 
-    # Step 1: Identify room or topic based on predefined rooms and keywords
-    room = None
-
     # Check for pending actions that require a simple yes/no response
     if pending_action and pending_action.startswith("check_availability_"):
         if is_affirmative(original_command_text):
@@ -288,13 +321,13 @@ def open_application(command, original_command_text):
             availability = check_room_availability(room)
 
             if availability["is_open"]:
-                response = f"{room} is open. Would you like me to guide you there?"
+                response = f"{room.replace('_', ' ')} is open. Would you like me to guide you there?"
                 with pending_action_lock:
                     pending_action = f"go_to_{room}"
                 logger.info(f"Responding: {response}")
             else:
                 next_open_day, next_open_time = get_next_opening(room)
-                response = f"{room} is currently closed and will open on {next_open_day} at {next_open_time}. Would you like help with something else?"
+                response = f"{room.replace('_', ' ')} is currently closed and will open on {next_open_day} at {next_open_time}. Would you like help with something else?"
 
                 # Set pending action to handle further assistance request
                 with pending_action_lock:
@@ -319,10 +352,10 @@ def open_application(command, original_command_text):
 
     elif pending_action and pending_action.startswith("go_to_"):
         if is_affirmative(original_command_text):
-            room = pending_action.split("_")[-1]
+            room = pending_action.split("_", 2)[-1]
             logger.debug(f"User confirmed to go to room: {room}")
             command_queue.put(f"go_to_{room}")
-            response = f"Taking you to the {room} now."
+            response = f"Taking you to the {room.replace('_', ' ')} now."
             pending_action = None
             response_queue.put(response)
             logger.info(f"Responding: {response}")
@@ -360,8 +393,42 @@ def open_application(command, original_command_text):
         logger.info(f"Responding: {response}")
         return jsonify({"response": response})
 
+    # Handle pending action for checking Dr. Nada's availability
+    elif pending_action and pending_action.startswith("check_doctor_availability_"):
+        if is_affirmative(original_command_text):
+            doctor_id = pending_action.split("_")[-1]
+            availability = get_doctor_availability_data(doctor_id)
+            if availability["is_available"]:
+                response = f"{doctor_id.replace('-', ' ').title()} is available now. Would you like me to guide you to their office?"
+                with pending_action_lock:
+                    pending_action = f"go_to_{doctor_id.replace('-', '_')}"
+                logger.info(f"Responding: {response}")
+            else:
+                response = f"{doctor_id.replace('-', ' ').title()} is not available now. {availability['next_availability']}. Would you like help with something else?"
+                with pending_action_lock:
+                    pending_action = "ask_if_help_needed"
+                logger.info(f"Responding: {response}")
+
+            response_queue.put(response)
+            return jsonify({"response": response})
+
+        elif is_negative(original_command_text):
+            response = "Okay, let me know if you need anything else."
+            pending_action = None
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
+
+        else:
+            response = "I'm sorry, I didn't catch that. Please say yes or no."
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
+
     # If no pending action requiring yes/no, proceed with normal processing
     # Step 1: Identify room or topic based on predefined rooms and keywords
+    room = None
+
     for valid_room in VALID_ROOMS:
         if valid_room.lower() in command:
             room = valid_room  # e.g., "Admission"
@@ -409,10 +476,33 @@ def open_application(command, original_command_text):
             ]
         ):
             room = "Admission"
+        elif any(
+            keyword in command
+            for keyword in [
+                "computer science major",
+                "cs major",
+                "computer science department",
+                "cs department",
+                "tell me about computer science",
+                "i want to study computer science",
+                "computer science information",
+            ]
+        ):
+            # Provide a brief about the computer science major
+            response = (
+                "The Computer Science major offers a comprehensive study of computing "
+                "systems and software. It covers programming, algorithms, data structures, "
+                "and more. Would you like to see if Dr. Nada is available to provide more information?"
+            )
+            with pending_action_lock:
+                pending_action = "check_doctor_availability_dr-nada"
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
 
     # Step 2: Provide initial conversational response based on identified room
     if room:
-        response = f"It sounds like the {room} office is where you need to go. Would you like me to check if it's open?"
+        response = f"It sounds like the {room.replace('_', ' ')} office is where you need to go. Would you like me to check if it's open?"
         with pending_action_lock:
             pending_action = f"check_availability_{room}"
         response_queue.put(response)
@@ -450,7 +540,7 @@ def get_next_opening(room):
     for i in range(7):  # Check up to a week ahead
         day_index = (days_of_week.index(current_day) + i) % 7
         next_day = days_of_week[day_index]
-        if next_day in weekly_schedule[room]:
+        if next_day in weekly_schedule.get(room, {}):
             opening_time = weekly_schedule[room][next_day]["opens_at"]
             if i > 0 or current_time < opening_time:
                 return next_day.capitalize(), opening_time
@@ -461,13 +551,87 @@ def get_next_opening(room):
     )  # If no opening time is found, which is unlikely in a weekly schedule
 
 
+def get_doctor_availability_data(doctor_id):
+    """Check the availability of a doctor."""
+    current_day = datetime.now().strftime("%A")
+    current_time = datetime.now().strftime("%H:%M")
+
+    availability = doctor_availability.get(doctor_id, {})
+    if current_day in availability:
+        for time_range in availability[current_day]:
+            start_time, end_time = map(str.strip, time_range.split("-"))
+            if start_time <= current_time <= end_time:
+                return {"is_available": True}
+        # Find next available time
+        for time_range in availability[current_day]:
+            start_time, _ = map(str.strip, time_range.split("-"))
+            if current_time < start_time:
+                next_availability = f"The next available time is today at {start_time}."
+                return {"is_available": False, "next_availability": next_availability}
+        # If no times left today, check next day
+        next_day_index = (
+            [
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+                "Sunday",
+            ].index(current_day)
+            + 1
+        ) % 7
+        next_day = [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+        ][next_day_index]
+        if next_day in availability:
+            next_time = availability[next_day][0].split("-")[0].strip()
+            next_availability = (
+                f"The next available time is on {next_day} at {next_time}."
+            )
+            return {"is_available": False, "next_availability": next_availability}
+        else:
+            return {
+                "is_available": False,
+                "next_availability": "No availability found.",
+            }
+    else:
+        # Find next available day
+        days_of_week = [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+        ]
+        current_day_index = days_of_week.index(current_day)
+        for i in range(1, 7):
+            next_day_index = (current_day_index + i) % 7
+            next_day = days_of_week[next_day_index]
+            if next_day in availability:
+                next_time = availability[next_day][0].split("-")[0].strip()
+                next_availability = (
+                    f"The next available time is on {next_day} at {next_time}."
+                )
+                return {"is_available": False, "next_availability": next_availability}
+        return {"is_available": False, "next_availability": "No availability found."}
+
+
 @app.route("/")
 def home():
     return render_template("index.html")
 
 
 @app.route("/doctor_availability", methods=["GET"])
-def get_doctor_availability():
+def doctor_availability_endpoint():
     """Fetch doctor availability."""
     doctor_id = request.args.get("doctor_id")
     if doctor_id:
@@ -493,6 +657,7 @@ def handle_command():
             pending_action.startswith("check_availability_")
             or pending_action.startswith("go_to_")
             or pending_action == "ask_if_help_needed"
+            or pending_action.startswith("check_doctor_availability_")
         ):
             # Pass the original command text to open_application for processing
             return open_application(command_text, command_text)
@@ -1039,6 +1204,8 @@ class CarRobot:
         ("Admission", "M216"): ["M216"],
         ("Admission", "M215"): ["M216", "M215"],
         ("M215", "Start"): ["Start"],
+        ("Start", "Dr_Nada"): ["M215", "M216", "Dr_Nada"],
+        ("Dr_Nada", "Start"): ["M216", "M215", "Start"],
         # Add more paths as needed
     }
 
@@ -1200,12 +1367,14 @@ class Game:
             (600, 150),  # M215
             (600, 450),  # M216
             (150, 450),  # Admission
+            (375, 300),  # Dr_Nada's office
         ]
         self.waypoint_names = [
             "Start",
             "M215",
             "M216",
             "Admission",
+            "Dr_Nada",
         ]
 
         # Map waypoint names to positions
