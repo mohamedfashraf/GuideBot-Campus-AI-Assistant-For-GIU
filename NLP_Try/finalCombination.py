@@ -82,11 +82,13 @@ logger = logging.getLogger(__name__)
 
 # -------------------- Flask App Setup ---------------------#
 
-# Initialize the zero-shot classification pipeline
+# Initialize the zero-shot classification pipeline with the recommended model
 nlp = pipeline(
     "zero-shot-classification",
-    model="facebook/bart-large-mnli",
-    clean_up_tokenization_spaces=True,
+    model="valhalla/distilbart-mnli-12-1",
+    tokenizer="valhalla/distilbart-mnli-12-1",
+    framework="pt",  # Use PyTorch for better compatibility on Raspberry Pi
+    device=-1,  # Use CPU
 )
 
 # Valid rooms with consistent naming (Title Case, underscores)
@@ -185,7 +187,6 @@ weekly_schedule = {
         "thursday": {"opens_at": "08:00", "closes_at": "23:00"},
         "friday": {"opens_at": "08:00", "closes_at": "23:00"},
     },
-    # Removed "Dr_Nada" from weekly_schedule as per your request
 }
 
 # Updated doctor_availability with the same times for each day
