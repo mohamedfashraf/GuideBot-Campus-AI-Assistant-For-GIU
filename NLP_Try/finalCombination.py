@@ -159,33 +159,54 @@ for room in VALID_ROOMS:
         ]
     )
 
+# Additional labels for GIU-specific interactions
+labels.extend(
+    [
+        "giu",
+        "german international university",
+        "apply to giu",
+        "admission at giu",
+        "next semester at giu",
+        "apply for next semester",
+    ]
+)
+
 weekly_schedule = {
     "Financial": {
-        "saturday": {"opens_at": "09:00", "closes_at": "23:00"},
-        "sunday": {"opens_at": "09:00", "closes_at": "23:00"},
-        "monday": {"opens_at": "09:00", "closes_at": "23:00"},
-        "tuesday": {"opens_at": "09:00", "closes_at": "23:00"},
-        "wednesday": {"opens_at": "09:00", "closes_at": "23:00"},
-        "thursday": {"opens_at": "09:00", "closes_at": "23:00"},
-        "friday": {"opens_at": "09:00", "closes_at": "23:00"},
+        "saturday": {"opens_at": "09:00", "closes_at": "17:00"},
+        "sunday": {"opens_at": "09:00", "closes_at": "17:00"},
+        "monday": {"opens_at": "09:00", "closes_at": "17:00"},
+        "tuesday": {"opens_at": "09:00", "closes_at": "17:00"},
+        "wednesday": {"opens_at": "09:00", "closes_at": "17:00"},
+        "thursday": {"opens_at": "09:00", "closes_at": "17:00"},
+        "friday": {"opens_at": "09:00", "closes_at": "17:00"},
     },
     "Student_Affairs": {
-        "saturday": {"opens_at": "10:00", "closes_at": "23:00"},
-        "sunday": {"opens_at": "10:00", "closes_at": "23:00"},
-        "monday": {"opens_at": "10:00", "closes_at": "23:00"},
-        "tuesday": {"opens_at": "10:00", "closes_at": "23:00"},
-        "wednesday": {"opens_at": "10:00", "closes_at": "23:00"},
-        "thursday": {"opens_at": "10:00", "closes_at": "23:00"},
-        "friday": {"opens_at": "10:00", "closes_at": "23:00"},
+        "saturday": {"opens_at": "10:00", "closes_at": "18:00"},
+        "sunday": {"opens_at": "10:00", "closes_at": "18:00"},
+        "monday": {"opens_at": "10:00", "closes_at": "18:00"},
+        "tuesday": {"opens_at": "10:00", "closes_at": "18:00"},
+        "wednesday": {"opens_at": "10:00", "closes_at": "18:00"},
+        "thursday": {"opens_at": "10:00", "closes_at": "18:00"},
+        "friday": {"opens_at": "10:00", "closes_at": "18:00"},
     },
     "Admission": {
-        "saturday": {"opens_at": "08:00", "closes_at": "23:00"},
-        "sunday": {"opens_at": "08:00", "closes_at": "23:00"},
-        "monday": {"opens_at": "08:00", "closes_at": "23:00"},
-        "tuesday": {"opens_at": "08:00", "closes_at": "23:00"},
-        "wednesday": {"opens_at": "08:00", "closes_at": "23:00"},
-        "thursday": {"opens_at": "08:00", "closes_at": "23:00"},
-        "friday": {"opens_at": "08:00", "closes_at": "23:00"},
+        "saturday": {"opens_at": "08:00", "closes_at": "16:00"},
+        "sunday": {"opens_at": "08:00", "closes_at": "16:00"},
+        "monday": {"opens_at": "08:00", "closes_at": "16:00"},
+        "tuesday": {"opens_at": "08:00", "closes_at": "16:00"},
+        "wednesday": {"opens_at": "08:00", "closes_at": "16:00"},
+        "thursday": {"opens_at": "08:00", "closes_at": "16:00"},
+        "friday": {"opens_at": "08:00", "closes_at": "16:00"},
+    },
+    "Dr_Nada": {
+        "saturday": {"opens_at": "08:00", "closes_at": "17:00"},
+        "sunday": {"opens_at": "08:00", "closes_at": "17:00"},
+        "monday": {"opens_at": "08:00", "closes_at": "17:00"},
+        "tuesday": {"opens_at": "08:00", "closes_at": "17:00"},
+        "wednesday": {"opens_at": "08:00", "closes_at": "17:00"},
+        "thursday": {"opens_at": "08:00", "closes_at": "17:00"},
+        "friday": {"opens_at": "08:00", "closes_at": "17:00"},
     },
 }
 
@@ -315,43 +336,7 @@ def open_application(command, original_command_text):
     logger.debug(f"Original command text: {original_command_text}")
 
     # Check for pending actions that require a simple yes/no response
-    if pending_action and pending_action.startswith("check_availability_"):
-        if is_affirmative(original_command_text):
-            room = pending_action.split("_")[-1]
-            logger.debug(f"User confirmed to check availability for room: {room}")
-            availability = check_room_availability(room)
-
-            if availability["is_open"]:
-                response = f"{room.replace('_', ' ')} is open. Would you like me to guide you there?"
-                with pending_action_lock:
-                    pending_action = f"go_to_{room}"
-                logger.info(f"Responding: {response}")
-            else:
-                next_open_day, next_open_time = get_next_opening(room)
-                response = f"{room.replace('_', ' ')} is currently closed and will open on {next_open_day} at {next_open_time}. Would you like help with something else?"
-
-                # Set pending action to handle further assistance request
-                with pending_action_lock:
-                    pending_action = "ask_if_help_needed"
-                logger.info(f"Responding: {response}")
-
-            response_queue.put(response)
-            return jsonify({"response": response})
-
-        elif is_negative(original_command_text):
-            response = "Okay, let me know if you need anything else."
-            pending_action = None
-            response_queue.put(response)
-            logger.info(f"Responding: {response}")
-            return jsonify({"response": response})
-
-        else:
-            response = "I'm sorry, I didn't catch that. Please say yes or no."
-            response_queue.put(response)
-            logger.info(f"Responding: {response}")
-            return jsonify({"response": response})
-
-    elif pending_action and pending_action.startswith("go_to_"):
+    if pending_action and pending_action.startswith("go_to_"):
         if is_affirmative(original_command_text):
             room = pending_action[len("go_to_") :]
             room_normalized = room.replace("-", "_").replace(" ", "_").title()
@@ -395,7 +380,7 @@ def open_application(command, original_command_text):
         logger.info(f"Responding: {response}")
         return jsonify({"response": response})
 
-    # Handle pending action for checking Dr. Nada's availability
+    # Handle pending action for checking doctor's availability
     elif pending_action and pending_action.startswith("check_doctor_availability_"):
         if is_affirmative(original_command_text):
             doctor_id = pending_action.split("_")[-1]
@@ -475,9 +460,37 @@ def open_application(command, original_command_text):
                 "enroll",
                 "registration",
                 "apply to university",
+                "apply for next semester",
+                "next semester at giu",
+                "admission at giu",
+                "apply to giu",
             ]
         ):
-            room = "Admission"
+            # Enhanced response for admission inquiries
+            availability = check_room_availability("Admission")
+            if availability["is_open"]:
+                response = (
+                    "We are thrilled that you're interested in joining the GIU family! "
+                    "Our admission office is open now and would be happy to assist you with your application. "
+                    "Would you like me to guide you to the Admission office?"
+                )
+                with pending_action_lock:
+                    pending_action = "go_to_Admission"
+                response_queue.put(response)
+                logger.info(f"Responding: {response}")
+            else:
+                next_open_day, next_open_time = get_next_opening("Admission")
+                response = (
+                    "We are thrilled that you're interested in joining the GIU family! "
+                    f"However, our admission office is currently closed and will reopen on {next_open_day.capitalize()} at {next_open_time}. "
+                    "Would you like help with something else?"
+                )
+                with pending_action_lock:
+                    pending_action = "ask_if_help_needed"
+                response_queue.put(response)
+                logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
+
         elif any(
             keyword in command
             for keyword in [
@@ -492,32 +505,52 @@ def open_application(command, original_command_text):
         ):
             # Provide a brief about the computer science major
             response = (
-                "The Computer Science major offers a comprehensive study of computing "
+                "The Computer Science major at GIU offers a comprehensive study of computing "
                 "systems and software. It covers programming, algorithms, data structures, "
-                "and more. Would you like to see if Dr. Nada is available to provide more information?"
+                "and more. We are proud of our state-of-the-art facilities and expert faculty. "
+                "Would you like to see if Dr. Nada is available to provide more information?"
             )
             with pending_action_lock:
                 pending_action = "check_doctor_availability_dr-nada"
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
+        elif any(
+            keyword in command
+            for keyword in [
+                "giu",
+                "german international university",
+            ]
+        ):
+            response = "Welcome to the German International University! How can I assist you today?"
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
 
     # Step 2: Provide initial conversational response based on identified room
     if room:
-        response = f"It sounds like the {room.replace('_', ' ')} office is where you need to go. Would you like me to check if it's open?"
-        with pending_action_lock:
-            pending_action = f"check_availability_{room}"
+        availability = check_room_availability(room)
+        if availability["is_open"]:
+            response = f"{room.replace('_', ' ')} is open. Would you like me to guide you there?"
+            with pending_action_lock:
+                pending_action = f"go_to_{room}"
+            logger.info(f"Responding: {response}")
+        else:
+            next_open_day, next_open_time = get_next_opening(room)
+            response = f"{room.replace('_', ' ')} is currently closed and will open on {next_open_day.capitalize()} at {next_open_time}. Would you like help with something else?"
+            with pending_action_lock:
+                pending_action = "ask_if_help_needed"
+            logger.info(f"Responding: {response}")
         response_queue.put(response)
-        logger.info(f"Responding: {response}")
         return jsonify({"response": response})
 
     # Handle greetings or fallback for unrecognized commands
     elif command.lower() in ["hi", "hey", "hello"]:
-        response = "Hello there! How can I assist you today?"
+        response = "Hello! Welcome to GIU's campus. How can I assist you today?"
     elif command == "kill":
         response = "Stopping the program. Goodbye!"
     else:
-        response = "I didn't understand the command. Could you please rephrase?"
+        response = "I'm sorry, I didn't quite understand that. Could you please rephrase your request?"
 
     response_queue.put(response)
     logger.info(f"Responding: {response}")
@@ -539,13 +572,12 @@ def get_next_opening(room):
     ]
 
     # Find the next day and time the room is open
-    for i in range(7):  # Check up to a week ahead
+    for i in range(1, 8):  # Start from next day, check up to a week ahead
         day_index = (days_of_week.index(current_day) + i) % 7
         next_day = days_of_week[day_index]
         if next_day in weekly_schedule.get(room, {}):
             opening_time = weekly_schedule[room][next_day]["opens_at"]
-            if i > 0 or current_time < opening_time:
-                return next_day.capitalize(), opening_time
+            return next_day, opening_time
 
     return (
         None,
@@ -656,8 +688,7 @@ def handle_command():
 
         # Check if there's a pending action that requires a yes/no response
         if pending_action and (
-            pending_action.startswith("check_availability_")
-            or pending_action.startswith("go_to_")
+            pending_action.startswith("go_to_")
             or pending_action == "ask_if_help_needed"
             or pending_action.startswith("check_doctor_availability_")
         ):
