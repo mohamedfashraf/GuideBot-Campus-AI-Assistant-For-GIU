@@ -10,7 +10,6 @@ from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
 from gtts import gTTS
 import os
-import subprocess
 from transformers import pipeline
 from pydub import AudioSegment
 from pydub.playback import play
@@ -18,6 +17,7 @@ import uuid
 import webbrowser
 from threading import Lock
 from datetime import datetime
+import re  # Import regex module for pattern matching
 
 # Initialize thread-safe queues
 command_queue = queue.Queue()
@@ -87,7 +87,7 @@ nlp = pipeline(
     "zero-shot-classification",
     model="valhalla/distilbart-mnli-12-1",
     tokenizer="valhalla/distilbart-mnli-12-1",
-    framework="pt",  # Use PyTorch for better compatibility on Raspberry Pi
+    framework="pt",  # Use PyTorch for better compatibility
     device=-1,  # Use CPU
 )
 
@@ -98,8 +98,25 @@ VALID_ROOMS = {
     "Admission",
     "Financial",
     "Student_Affairs",
-    "Dr_Nada",
 }
+
+# Valid doctors
+VALID_DOCTORS = {
+    "Dr_Nada",
+    "Dr_Slim",
+    "Dr_Omar",
+}
+
+# Days of the week
+DAYS_OF_WEEK = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+]
 
 # Expanded labels with synonyms and related terms
 labels = [
@@ -156,8 +173,35 @@ for room in VALID_ROOMS:
             f"take me to {room_lower}",
             f"go to room {room_lower}",
             f"take me to room {room_lower}",
+            f"is {room_lower} open",
+            f"what are the opening times for {room_lower}",
+            f"when does {room_lower} open",
+            f"when does {room_lower} close",
+            f"what time does {room_lower} open",
+            f"what time does {room_lower} close",
         ]
     )
+
+# Add dynamic command variations for each doctor in VALID_DOCTORS
+for doctor in VALID_DOCTORS:
+    doctor_lower = doctor.replace("_", " ").lower()
+    labels.append(doctor_lower)
+    labels.extend(
+        [
+            f"is {doctor_lower} available",
+            f"when is {doctor_lower} available",
+            f"what are {doctor_lower}'s working hours",
+            f"what time is {doctor_lower} available",
+            f"can I meet {doctor_lower}",
+            f"see {doctor_lower}",
+            f"visit {doctor_lower}",
+            f"go to {doctor_lower}",
+        ]
+    )
+
+# Add days of the week and "now" to labels
+labels.extend(DAYS_OF_WEEK)
+labels.append("now")
 
 # Additional labels for GIU-specific interactions
 labels.extend(
@@ -173,100 +217,34 @@ labels.extend(
 
 weekly_schedule = {
     "Financial": {
-        "saturday": {"opens_at": "09:00", "closes_at": "17:00"},
-        "sunday": {"opens_at": "09:00", "closes_at": "17:00"},
-        "monday": {"opens_at": "09:00", "closes_at": "17:00"},
-        "tuesday": {"opens_at": "09:00", "closes_at": "17:00"},
-        "wednesday": {"opens_at": "09:00", "closes_at": "17:00"},
-        "thursday": {"opens_at": "09:00", "closes_at": "17:00"},
-        "friday": {"opens_at": "09:00", "closes_at": "17:00"},
+        day: {"opens_at": "09:00", "closes_at": "17:00"} for day in DAYS_OF_WEEK
     },
     "Student_Affairs": {
-        "saturday": {"opens_at": "10:00", "closes_at": "18:00"},
-        "sunday": {"opens_at": "10:00", "closes_at": "18:00"},
-        "monday": {"opens_at": "10:00", "closes_at": "18:00"},
-        "tuesday": {"opens_at": "10:00", "closes_at": "18:00"},
-        "wednesday": {"opens_at": "10:00", "closes_at": "18:00"},
-        "thursday": {"opens_at": "10:00", "closes_at": "18:00"},
-        "friday": {"opens_at": "10:00", "closes_at": "18:00"},
+        day: {"opens_at": "10:00", "closes_at": "18:00"} for day in DAYS_OF_WEEK
     },
     "Admission": {
-        "saturday": {"opens_at": "08:00", "closes_at": "16:00"},
-        "sunday": {"opens_at": "08:00", "closes_at": "16:00"},
-        "monday": {"opens_at": "08:00", "closes_at": "16:00"},
-        "tuesday": {"opens_at": "08:00", "closes_at": "16:00"},
-        "wednesday": {"opens_at": "08:00", "closes_at": "16:00"},
-        "thursday": {"opens_at": "08:00", "closes_at": "16:00"},
-        "friday": {"opens_at": "08:00", "closes_at": "16:00"},
-    },
-    "Dr_Nada": {
-        "saturday": {"opens_at": "08:00", "closes_at": "17:00"},
-        "sunday": {"opens_at": "08:00", "closes_at": "17:00"},
-        "monday": {"opens_at": "08:00", "closes_at": "17:00"},
-        "tuesday": {"opens_at": "08:00", "closes_at": "17:00"},
-        "wednesday": {"opens_at": "08:00", "closes_at": "17:00"},
-        "thursday": {"opens_at": "08:00", "closes_at": "17:00"},
-        "friday": {"opens_at": "08:00", "closes_at": "17:00"},
+        day: {"opens_at": "08:00", "closes_at": "16:00"} for day in DAYS_OF_WEEK
     },
 }
 
-# Updated doctor_availability with the same times for each day
-doctor_availability = {
-    "dr-slim": {
-        day: [
-            "08:30 - 10:00",
-            "10:15 - 11:45",
-            "12:00 - 13:30",
-            "13:45 - 15:15",
-            "15:45 - 17:15",
-        ]
-        for day in [
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-            "Sunday",
-        ]
-    },
-    "dr-nada": {
-        day: [
-            "08:30 - 10:00",
-            "10:15 - 11:45",
-            "12:00 - 13:30",
-            "13:45 - 15:15",
-            "15:45 - 17:15",
-        ]
-        for day in [
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-            "Sunday",
-        ]
-    },
-    "dr-omar": {
-        day: [
-            "08:30 - 10:00",
-            "10:15 - 11:45",
-            "12:00 - 13:30",
-            "13:45 - 15:15",
-            "15:45 - 17:15",
-        ]
-        for day in [
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-            "Sunday",
-        ]
-    },
-}
+
+# Helper function to create doctor's schedule
+def create_doctor_schedule():
+    schedule = {}
+    common_times = [
+        "08:30 - 10:00",
+        "10:15 - 11:45",
+        "12:00 - 13:30",
+        "13:45 - 15:15",
+        "15:45 - 17:15",
+    ]
+    for doctor in ["dr_nada", "dr_slim", "dr_omar"]:
+        schedule[doctor] = {day: common_times.copy() for day in DAYS_OF_WEEK}
+    return schedule
+
+
+# Doctor availability schedule
+doctor_availability = create_doctor_schedule()
 
 
 def check_room_availability(room):
@@ -302,6 +280,7 @@ CORS(app)  # Enable CORS for all routes if frontend is on a different origin
 # State management for conversation
 pending_action = None
 pending_action_lock = Lock()
+pending_room = None  # Store the room for which we are asking the day
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -328,7 +307,7 @@ def is_negative(response):
 
 
 def open_application(command, original_command_text):
-    global pending_action
+    global pending_action, pending_room
     response = ""
     command = command.strip().lower()
 
@@ -338,11 +317,16 @@ def open_application(command, original_command_text):
     # Check for pending actions that require a simple yes/no response
     if pending_action and pending_action.startswith("go_to_"):
         if is_affirmative(original_command_text):
-            room = pending_action[len("go_to_") :]
-            room_normalized = room.replace("-", "_").replace(" ", "_").title()
-            logger.debug(f"User confirmed to go to room: {room_normalized}")
-            command_queue.put(f"go_to_{room_normalized}")
-            response = f"Taking you to the {room_normalized.replace('_', ' ')} now."
+            location = pending_action[len("go_to_") :]
+            location_normalized = location.replace("-", "_").replace(" ", "_").title()
+            logger.debug(f"User confirmed to go to location: {location_normalized}")
+            command_queue.put(f"go_to_{location_normalized}")
+            if location_normalized in [doc.title() for doc in VALID_DOCTORS]:
+                response = f"Taking you to {location_normalized.replace('_', ' ')}'s office now."
+            else:
+                response = (
+                    f"Taking you to the {location_normalized.replace('_', ' ')} now."
+                )
             pending_action = None
             response_queue.put(response)
             logger.info(f"Responding: {response}")
@@ -350,7 +334,7 @@ def open_application(command, original_command_text):
 
         elif is_negative(original_command_text):
             response = "Okay, let me know if you need anything else."
-            pending_action = None
+            pending_action = "ask_if_help_needed"
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -383,15 +367,17 @@ def open_application(command, original_command_text):
     # Handle pending action for checking doctor's availability
     elif pending_action and pending_action.startswith("check_doctor_availability_"):
         if is_affirmative(original_command_text):
-            doctor_id = pending_action.split("_")[-1]
+            doctor_id = pending_action[len("check_doctor_availability_") :].replace(
+                "-", "_"
+            )
             availability = get_doctor_availability_data(doctor_id)
             if availability["is_available"]:
-                response = f"{doctor_id.replace('-', ' ').title()} is available now. Would you like me to guide you to their office?"
+                response = f"{doctor_id.replace('_', ' ').title()} is available now. Would you like me to guide you to their office?"
                 with pending_action_lock:
-                    pending_action = f"go_to_{doctor_id.replace('-', '_').title()}"
+                    pending_action = f"go_to_{doctor_id.title()}"
                 logger.info(f"Responding: {response}")
             else:
-                response = f"{doctor_id.replace('-', ' ').title()} is not available now. {availability['next_availability']}. Would you like help with something else?"
+                response = f"{doctor_id.replace('_', ' ').title()} is not available now. {availability['next_availability']} Would you like help with something else?"
                 with pending_action_lock:
                     pending_action = "ask_if_help_needed"
                 logger.info(f"Responding: {response}")
@@ -401,7 +387,7 @@ def open_application(command, original_command_text):
 
         elif is_negative(original_command_text):
             response = "Okay, let me know if you need anything else."
-            pending_action = None
+            pending_action = "ask_if_help_needed"
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -412,9 +398,165 @@ def open_application(command, original_command_text):
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
 
+    # Handle pending action for asking day of week for room
+    elif pending_action and pending_action.startswith("ask_for_day_room_"):
+        room = pending_action[len("ask_for_day_room_") :]
+        if is_negative(original_command_text):
+            response = "Okay, let me know if you need anything else."
+            pending_action = "ask_if_help_needed"
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
+
+        day_in_text = extract_day_from_text(original_command_text)
+        if day_in_text:
+            opening_times = get_room_opening_times(room, day_in_text)
+            if opening_times:
+                response = f"The {room.replace('_', ' ')} opens at {opening_times['opens_at']} and closes at {opening_times['closes_at']} on {day_in_text.capitalize()}."
+            else:
+                response = f"The {room.replace('_', ' ')} is closed on {day_in_text.capitalize()}."
+            # Ask if the user needs anything else
+            response += " Is there anything else I can assist you with?"
+            pending_action = "ask_if_help_needed"
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
+        else:
+            response = (
+                "I'm sorry, I didn't catch the day. Please specify a day of the week."
+            )
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
+
+    # Handle pending action for asking day of week for doctor
+    elif pending_action and pending_action.startswith("ask_for_day_doctor_"):
+        doctor = pending_action[len("ask_for_day_doctor_") :]
+        if is_negative(original_command_text):
+            response = "Okay, let me know if you need anything else."
+            pending_action = "ask_if_help_needed"
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
+
+        day_in_text = extract_day_from_text(original_command_text)
+        if day_in_text:
+            schedule = get_doctor_schedule(doctor, day_in_text)
+            if schedule:
+                schedule_str = ", ".join(schedule)
+                response = f"{doctor.replace('_', ' ').title()} is available at the following times on {day_in_text.capitalize()}: {schedule_str}."
+            else:
+                response = f"{doctor.replace('_', ' ').title()} is not available on {day_in_text.capitalize()}."
+            # Ask if the user needs anything else
+            response += " Is there anything else I can assist you with?"
+            pending_action = "ask_if_help_needed"
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
+        else:
+            response = (
+                "I'm sorry, I didn't catch the day. Please specify a day of the week."
+            )
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
+
     # If no pending action requiring yes/no, proceed with normal processing
+    # Normalize the command for matching
+    command_normalized = command.replace("dr ", "").replace("doctor ", "").strip()
+
+    # Step 1: Identify room or doctor availability queries
+    availability_query_match = re.search(
+        r"(is|are|when|what time)(.*?)(open|close|available)", command_normalized
+    )
+
+    if availability_query_match:
+        subject = availability_query_match.group(2).strip()
+        logger.debug(f"Subject extracted for availability query: {subject}")
+
+        # Normalize subject
+        subject_normalized = subject.replace("dr ", "").replace("doctor ", "").strip()
+
+        # Extract day if specified
+        day_in_text = extract_day_from_text(command_normalized)
+        logger.debug(f"Day extracted from query: {day_in_text}")
+
+        # Check for 'now' in the command to represent the current day
+        if "now" in command_normalized:
+            day_in_text = datetime.now().strftime("%A").lower()
+            logger.debug(
+                f"'Now' detected, setting day_in_text to current day: {day_in_text}"
+            )
+
+        # Check if the subject is a room
+        for room in VALID_ROOMS:
+            room_lower = room.replace("_", " ").lower()
+            if room_lower == subject_normalized or subject_normalized.endswith(
+                room_lower
+            ):
+                if day_in_text:
+                    opening_times = get_room_opening_times(room, day_in_text)
+                    if opening_times:
+                        response = f"The {room.replace('_', ' ')} opens at {opening_times['opens_at']} and closes at {opening_times['closes_at']} on {day_in_text.capitalize()}."
+                    else:
+                        response = f"The {room.replace('_', ' ')} is closed on {day_in_text.capitalize()}."
+                    # Ask if the user needs anything else
+                    response += " Is there anything else I can assist you with?"
+                    pending_action = "ask_if_help_needed"
+                    response_queue.put(response)
+                    logger.info(f"Responding: {response}")
+                    return jsonify({"response": response})
+                else:
+                    response = "Do you need the opening times for a specific day?"
+                    with pending_action_lock:
+                        pending_action = f"ask_for_day_room_{room}"
+                    response_queue.put(response)
+                    logger.info(f"Responding: {response}")
+                    return jsonify({"response": response})
+
+        # Check if the subject is a doctor
+        for doctor in VALID_DOCTORS:
+            doctor_lower = doctor.replace("_", " ").lower()
+            doctor_normalized = (
+                doctor_lower.replace("dr ", "").replace("doctor ", "").strip()
+            )
+            if (
+                doctor_normalized == subject_normalized
+                or doctor_normalized in subject_normalized
+            ):
+                if day_in_text:
+                    schedule = get_doctor_schedule(doctor.lower(), day_in_text)
+                    if schedule:
+                        schedule_str = ", ".join(schedule)
+                        response = f"{doctor.replace('_', ' ').title()} is available at the following times on {day_in_text.capitalize()}: {schedule_str}."
+                    else:
+                        response = f"{doctor.replace('_', ' ').title()} is not available on {day_in_text.capitalize()}."
+                    response += " Is there anything else I can assist you with?"
+                    pending_action = "ask_if_help_needed"
+                    response_queue.put(response)
+                    logger.info(f"Responding: {response}")
+                    return jsonify({"response": response})
+                else:
+                    # Handle 'now' or no day specified
+                    if not day_in_text:
+                        day_in_text = datetime.now().strftime("%A").lower()
+                    schedule = get_doctor_schedule(doctor.lower(), day_in_text)
+                    if schedule:
+                        schedule_str = ", ".join(schedule)
+                        response = f"{doctor.replace('_', ' ').title()} is available at the following times today: {schedule_str}."
+                    else:
+                        response = f"{doctor.replace('_', ' ').title()} is not available today."
+                    response += " Is there anything else I can assist you with?"
+                    pending_action = "ask_if_help_needed"
+                    response_queue.put(response)
+                    logger.info(f"Responding: {response}")
+                    return jsonify({"response": response})
+
+    # Continue with previous logic if no availability queries detected
+
     # Step 1: Identify room or topic based on predefined rooms and keywords
     room = None
+    doctor = None
 
     for valid_room in VALID_ROOMS:
         if valid_room.replace("_", " ").lower() in command:
@@ -422,8 +564,20 @@ def open_application(command, original_command_text):
             logger.debug(f"Identified room: {room}")
             break
 
-    # Additional keywords for topics if no room is detected
+    # Check for doctor
     if not room:
+        for valid_doctor in VALID_DOCTORS:
+            doctor_lower = valid_doctor.replace("_", " ").lower()
+            doctor_normalized = (
+                doctor_lower.replace("dr ", "").replace("doctor ", "").strip()
+            )
+            if doctor_normalized in command_normalized:
+                doctor = valid_doctor
+                logger.debug(f"Identified doctor: {doctor}")
+                break
+
+    # Additional keywords for topics if no room or doctor is detected
+    if not room and not doctor:
         if any(
             keyword in command
             for keyword in [
@@ -490,7 +644,6 @@ def open_application(command, original_command_text):
                 response_queue.put(response)
                 logger.info(f"Responding: {response}")
             return jsonify({"response": response})
-
         elif any(
             keyword in command
             for keyword in [
@@ -527,7 +680,7 @@ def open_application(command, original_command_text):
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
 
-    # Step 2: Provide initial conversational response based on identified room
+    # Step 2: Provide initial conversational response based on identified room or doctor
     if room:
         availability = check_room_availability(room)
         if availability["is_open"]:
@@ -543,6 +696,51 @@ def open_application(command, original_command_text):
             logger.info(f"Responding: {response}")
         response_queue.put(response)
         return jsonify({"response": response})
+
+    elif doctor:
+        # Handle 'now' in command to represent current day
+        if "now" in command_normalized:
+            day_in_text = datetime.now().strftime("%A").lower()
+            schedule = get_doctor_schedule(doctor.lower(), day_in_text)
+            if schedule:
+                schedule_str = ", ".join(schedule)
+                response = f"{doctor.replace('_', ' ').title()} is available at the following times today: {schedule_str}."
+            else:
+                response = f"{doctor.replace('_', ' ').title()} is not available today."
+            response += " Is there anything else I can assist you with?"
+            pending_action = "ask_if_help_needed"
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
+        else:
+            # Extract day if specified
+            day_in_text = extract_day_from_text(command_normalized)
+            if day_in_text:
+                schedule = get_doctor_schedule(doctor.lower(), day_in_text)
+                if schedule:
+                    schedule_str = ", ".join(schedule)
+                    response = f"{doctor.replace('_', ' ').title()} is available at the following times on {day_in_text.capitalize()}: {schedule_str}."
+                else:
+                    response = f"{doctor.replace('_', ' ').title()} is not available on {day_in_text.capitalize()}."
+                response += " Is there anything else I can assist you with?"
+                pending_action = "ask_if_help_needed"
+                response_queue.put(response)
+                logger.info(f"Responding: {response}")
+                return jsonify({"response": response})
+            else:
+                availability = get_doctor_availability_data(doctor.lower())
+                if availability["is_available"]:
+                    response = f"{doctor.replace('_', ' ').title()} is available now. Would you like me to guide you to their office?"
+                    with pending_action_lock:
+                        pending_action = f"go_to_{doctor}"
+                    logger.info(f"Responding: {response}")
+                else:
+                    response = f"{doctor.replace('_', ' ').title()} is not available now. {availability['next_availability']} Would you like help with something else?"
+                    with pending_action_lock:
+                        pending_action = "ask_if_help_needed"
+                    logger.info(f"Responding: {response}")
+                response_queue.put(response)
+                return jsonify({"response": response})
 
     # Handle greetings or fallback for unrecognized commands
     elif command.lower() in ["hi", "hey", "hello"]:
@@ -561,15 +759,7 @@ def open_application(command, original_command_text):
 def get_next_opening(room):
     current_day = datetime.now().strftime("%A").lower()
     current_time = datetime.now().strftime("%H:%M")
-    days_of_week = [
-        "monday",
-        "tuesday",
-        "wednesday",
-        "thursday",
-        "friday",
-        "saturday",
-        "sunday",
-    ]
+    days_of_week = DAYS_OF_WEEK
 
     # Find the next day and time the room is open
     for i in range(1, 8):  # Start from next day, check up to a week ahead
@@ -585,9 +775,37 @@ def get_next_opening(room):
     )  # If no opening time is found, which is unlikely in a weekly schedule
 
 
+def get_room_opening_times(room, day):
+    """Get the opening times for a room on a specific day."""
+    day = day.lower()
+    if room in weekly_schedule and day in weekly_schedule[room]:
+        return weekly_schedule[room][day]
+    else:
+        return None
+
+
+def get_doctor_schedule(doctor, day):
+    """Get the schedule for a doctor on a specific day."""
+    day = day.lower()
+    doctor = doctor.lower()
+    if doctor in doctor_availability and day in doctor_availability[doctor]:
+        return doctor_availability[doctor][day]
+    else:
+        return None
+
+
+def extract_day_from_text(text):
+    """Extract day of the week from text."""
+    text = text.lower()
+    for day in DAYS_OF_WEEK:
+        if day in text:
+            return day
+    return None
+
+
 def get_doctor_availability_data(doctor_id):
     """Check the availability of a doctor."""
-    current_day = datetime.now().strftime("%A")
+    current_day = datetime.now().strftime("%A").lower()
     current_time = datetime.now().strftime("%H:%M")
 
     availability = doctor_availability.get(doctor_id, {})
@@ -603,31 +821,12 @@ def get_doctor_availability_data(doctor_id):
                 next_availability = f"The next available time is today at {start_time}."
                 return {"is_available": False, "next_availability": next_availability}
         # If no times left today, check next day
-        next_day_index = (
-            [
-                "Monday",
-                "Tuesday",
-                "Wednesday",
-                "Thursday",
-                "Friday",
-                "Saturday",
-                "Sunday",
-            ].index(current_day)
-            + 1
-        ) % 7
-        next_day = [
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-            "Sunday",
-        ][next_day_index]
+        next_day_index = (DAYS_OF_WEEK.index(current_day) + 1) % 7
+        next_day = DAYS_OF_WEEK[next_day_index]
         if next_day in availability:
             next_time = availability[next_day][0].split("-")[0].strip()
             next_availability = (
-                f"The next available time is on {next_day} at {next_time}."
+                f"The next available time is on {next_day.capitalize()} at {next_time}."
             )
             return {"is_available": False, "next_availability": next_availability}
         else:
@@ -637,24 +836,14 @@ def get_doctor_availability_data(doctor_id):
             }
     else:
         # Find next available day
-        days_of_week = [
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-            "Sunday",
-        ]
+        days_of_week = DAYS_OF_WEEK
         current_day_index = days_of_week.index(current_day)
         for i in range(1, 7):
             next_day_index = (current_day_index + i) % 7
             next_day = days_of_week[next_day_index]
             if next_day in availability:
                 next_time = availability[next_day][0].split("-")[0].strip()
-                next_availability = (
-                    f"The next available time is on {next_day} at {next_time}."
-                )
+                next_availability = f"The next available time is on {next_day.capitalize()} at {next_time}."
                 return {"is_available": False, "next_availability": next_availability}
         return {"is_available": False, "next_availability": "No availability found."}
 
@@ -669,7 +858,7 @@ def doctor_availability_endpoint():
     """Fetch doctor availability."""
     doctor_id = request.args.get("doctor_id")
     if doctor_id:
-        availability = doctor_availability.get(doctor_id, {})
+        availability = doctor_availability.get(doctor_id.lower(), {})
         if availability:
             return jsonify({"status": "success", "data": availability})
         return jsonify({"status": "error", "message": "Doctor not found"}), 404
@@ -686,11 +875,13 @@ def handle_command():
     if command_text:
         logger.debug(f"Command received: {command_text}")
 
-        # Check if there's a pending action that requires a yes/no response
+        # Check if there's a pending action that requires a response
         if pending_action and (
             pending_action.startswith("go_to_")
             or pending_action == "ask_if_help_needed"
             or pending_action.startswith("check_doctor_availability_")
+            or pending_action.startswith("ask_for_day_room_")
+            or pending_action.startswith("ask_for_day_doctor_")
         ):
             # Pass the original command text to open_application for processing
             return open_application(command_text, command_text)
@@ -722,9 +913,8 @@ def handle_command():
             predicted_label = matched_labels[0]
             return open_application(predicted_label, command_text)
         else:
-            response = "I'm not sure what you meant. Can you try again?"
-            response_queue.put(response)
-            return jsonify({"response": response})
+            # If no label matched with high confidence, treat the original text
+            return open_application(command_text, command_text)
 
     return jsonify({"response": "No command received."})
 
@@ -1461,20 +1651,24 @@ class Game:
                 command = command_queue.get_nowait()
                 logger.info(f"Processing command from Flask: {command}")
                 if command.startswith("go_to_"):
-                    # Extract the room name dynamically
-                    room = command[len("go_to_") :]  # Get the substring after 'go_to_'
-                    room_normalized = room.replace("-", "_").replace(" ", "_").title()
+                    # Extract the room or doctor's name dynamically
+                    location = command[
+                        len("go_to_") :
+                    ]  # Get the substring after 'go_to_'
+                    location_normalized = (
+                        location.replace("-", "_").replace(" ", "_").title()
+                    )
 
-                    # Check if the room exists in waypoint_names
-                    if room_normalized in self.waypoint_names:
-                        target_point = self.waypoint_dict[room_normalized]
-                        self.car.set_target(target_point, room_normalized)
+                    # Check if the location exists in waypoint_names
+                    if location_normalized in self.waypoint_names:
+                        target_point = self.waypoint_dict[location_normalized]
+                        self.car.set_target(target_point, location_normalized)
                         logger.info(
-                            f"Setting target to {room_normalized}: {target_point}"
+                            f"Setting target to {location_normalized}: {target_point}"
                         )
                         self.send_command("START_SERVO")
                     else:
-                        logger.warning(f"Unknown room: {room_normalized}")
+                        logger.warning(f"Unknown location: {location_normalized}")
                 elif command == "user_choice_done":
                     self.car.return_to_start()
                     response_queue.put("Goodbye, going to start point.")
