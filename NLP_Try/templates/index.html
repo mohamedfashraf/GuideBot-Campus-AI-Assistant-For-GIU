@@ -142,6 +142,39 @@
         pointer-events: none;
       }
 
+      /* Music Waves Animation */
+      .music-wave {
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 4px; /* Space between bars */
+      }
+
+      .music-wave .bar {
+        width: 4px;
+        height: 10px;
+        background-color: #818cf8; /* Tailwind's indigo-300 */
+        border-radius: 2px;
+        animation: wave 1s infinite ease-in-out;
+      }
+
+      .music-wave .bar:nth-child(1) {
+        animation-delay: -0.4s;
+      }
+
+      .music-wave .bar:nth-child(2) {
+        animation-delay: -0.2s;
+      }
+
+      .music-wave .bar:nth-child(3) {
+        animation-delay: 0s;
+      }
+
+      @keyframes wave {
+        0%, 100% { height: 10px; opacity: 0.5; }
+        50% { height: 20px; opacity: 1; }
+      }
+
       /* Responsive Button Layout for Available Times */
       .times-container {
         display: grid;
@@ -213,21 +246,6 @@
       .bot-bubble {
         padding: 0.5rem 1rem; /* Reduced padding */
         font-size: 0.75rem; /* text-xs */
-      }
-
-      /* Loader Styles */
-      .loader {
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #818cf8; /* Tailwind's indigo-300 */
-        border-radius: 50%;
-        width: 3rem;
-        height: 3rem;
-        animation: spin 1s linear infinite;
-      }
-
-      @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
       }
 
       /* Utility class to hide elements */
@@ -325,10 +343,12 @@
       </div>
     </div>
 
-    <!-- Loader (Hidden by Default) -->
+    <!-- Loader (Removed or Commented Out) -->
+    <!-- 
     <div id="loader" class="hidden fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50 z-50">
       <div class="loader bg-indigo-500 rounded-full w-16 h-16 animate-spin"></div>
     </div>
+    -->
 
     <!-- Wave Background -->
     <div class="wave-background">
@@ -358,7 +378,7 @@
       // Fetch Doctor Availability from Backend with doctorId
       async function fetchDoctorAvailability(doctorId) {
         console.log(`Fetching availability for doctor ID: ${doctorId}`);
-        document.getElementById("loader").classList.remove("hidden"); // Show loader
+        // Removed global loader
         try {
           const response = await fetch(
             `http://127.0.0.1:5000/doctor_availability?doctor_id=${doctorId}`
@@ -369,12 +389,10 @@
           }
           const data = await response.json();
           console.log("Fetched doctor availability data:", data);
-          document.getElementById("loader").classList.add("hidden"); // Hide loader
           return data;
         } catch (error) {
           console.error("Error fetching doctor availability:", error);
           alert("Failed to fetch doctor availability. Please try again.");
-          document.getElementById("loader").classList.add("hidden"); // Hide loader
           return {}; // Return an empty object if there's an error
         }
       }
@@ -605,13 +623,10 @@
           return;
         }
 
-        // Display user's command and robot's response
+        // Display user's command and bot's loading animation
         displayLastInteraction(command, "Thinking...");
 
         try {
-          // Show loader while processing
-          document.getElementById("loader").classList.remove("hidden");
-
           // Send command to Flask backend
           const response = await fetch("http://127.0.0.1:5000/command", {
             method: "POST",
@@ -638,8 +653,8 @@
             "Sorry, there was an error processing your command."
           );
         } finally {
-          // Hide loader after processing
-          document.getElementById("loader").classList.add("hidden");
+          // Hide loader after processing (if using global loader)
+          // document.getElementById("loader").classList.add("hidden"); // Not needed now
         }
 
         // Clear the input field
@@ -669,14 +684,30 @@
         userMessageBubble.appendChild(userBubbleContent);
         interactionContent.appendChild(userMessageBubble);
 
-        // Robot Response
+        // Bot Response
         const botMessageBubble = document.createElement("div");
         botMessageBubble.className = "flex items-start mb-3 justify-start";
 
         const botBubbleContent = document.createElement("div");
         botBubbleContent.className =
           "max-w-xs px-4 py-2 rounded-lg shadow bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-none text-sm"; /* Reduced padding and font size */
-        botBubbleContent.textContent = botResponse;
+
+        if (botResponse === "Thinking...") {
+          // Insert Music Waves Animation
+          const musicWave = document.createElement("div");
+          musicWave.className = "music-wave";
+          
+          for (let i = 0; i < 3; i++) { // Create 3 bars
+            const bar = document.createElement("div");
+            bar.className = "bar";
+            musicWave.appendChild(bar);
+          }
+          
+          botBubbleContent.appendChild(musicWave);
+        } else {
+          // Insert Actual Response Text
+          botBubbleContent.textContent = botResponse;
+        }
 
         botMessageBubble.appendChild(botBubbleContent);
         interactionContent.appendChild(botMessageBubble);
