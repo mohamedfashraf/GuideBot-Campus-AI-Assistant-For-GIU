@@ -19,22 +19,22 @@ from threading import Lock
 from datetime import datetime
 import re  # Import regex module for pattern matching
 
-# Initialize thread-safe queues
+# Initialize thread-safe queues for inter-thread communication
 command_queue = queue.Queue()
 response_queue = queue.Queue()
-prompt_queue = queue.Queue()  # Queue for prompts
+prompt_queue = queue.Queue()  # Queue for prompts to be sent to the frontend
 
 # -------------------- Constants ---------------------#
 
-# Pygame Initialization
+# Initialize Pygame
 pygame.init()
 
-# Screen dimensions
+# Define screen dimensions
 WIDTH, HEIGHT = 800, 600
-BUTTON_AREA_HEIGHT = 50  # Space for buttons and prompt
-TOTAL_HEIGHT = HEIGHT + BUTTON_AREA_HEIGHT  # Total screen height with buttons area
+BUTTON_AREA_HEIGHT = 50  # Space reserved for buttons and prompts
+TOTAL_HEIGHT = HEIGHT + BUTTON_AREA_HEIGHT  # Total screen height including button area
 
-# Color definitions
+# Define color constants using RGB tuples
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
@@ -44,54 +44,52 @@ DARK_GRAY = (169, 169, 169)
 LIGHT_GRAY = (211, 211, 211)
 
 # Car properties
-CAR_IMAGE_PATH = (
-    "navigationTry/2d-super-car-top-view.png"  # Ensure this path is correct
-)
-CAR_SIZE = (80, 40)  # Reduced from (100, 50)
-CAR_SPEED = 2
-CAR_ROTATION_SPEED = 5
+CAR_IMAGE_PATH = "navigationTry/2d-super-car-top-view.png"  # Path to the car image
+CAR_SIZE = (80, 40)  # Size of the car image (width, height)
+CAR_SPEED = 2  # Speed at which the car moves
+CAR_ROTATION_SPEED = 5  # Degrees the car rotates per update
 
-# Sensor properties
+# Sensor properties for obstacle detection
 NUM_SENSORS = 3
-SENSOR_LENGTH = 45  # Adjusted sensor length
-SENSOR_ANGLES = [-30, 0, 30]  # Angles for left, front, right sensors
+SENSOR_LENGTH = 45  # Length of each sensor
+SENSOR_ANGLES = [-30, 0, 30]  # Angles for left, front, and right sensors
 
 # Waypoint properties
-WAYPOINT_THRESHOLD = 20  # Distance to consider waypoint as reached
+WAYPOINT_THRESHOLD = 20  # Distance threshold to consider a waypoint as reached
 
-# Frame rate
+# Frame rate for the Pygame loop
 FPS = 60
 
-# Serial communication settings
-SERIAL_PORT = "COM5"  # Update this as per your system
-BAUD_RATE = 115200  # Updated to match Arduino's baud rate
+# Serial communication settings for Arduino
+SERIAL_PORT = "COM5"  # Serial port (update as per your system)
+BAUD_RATE = 115200  # Baud rate matching Arduino's settings
 
 # -------------------- Logging Configuration ---------------------#
 
-# Configure the logging module
+# Configure the logging module to display INFO level logs and above
 logging.basicConfig(
-    level=logging.INFO,  # Set the logging level to INFO
-    format="%(asctime)s - %(levelname)s - %(message)s",  # Log format
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.StreamHandler(sys.stdout),  # Log to console
+        logging.StreamHandler(sys.stdout),  # Log output to the console
     ],
 )
 
-# Create a logger object
+# Create a logger object for this module
 logger = logging.getLogger(__name__)
 
 # -------------------- Flask App Setup ---------------------#
 
-# Initialize the zero-shot classification pipeline with the recommended model
+# Initialize the zero-shot classification pipeline using a pre-trained model
 nlp = pipeline(
     "zero-shot-classification",
     model="valhalla/distilbart-mnli-12-1",
     tokenizer="valhalla/distilbart-mnli-12-1",
-    framework="pt",  # Use PyTorch for better compatibility
-    device=-1,  # Use CPU
+    framework="pt",  # Use PyTorch framework
+    device=-1,  # Use CPU (set to a GPU device index if available)
 )
 
-# Valid rooms with consistent naming (Title Case, underscores)
+# Define valid rooms with consistent naming (Title Case, underscores)
 VALID_ROOMS = {
     "M215",
     "M216",
@@ -100,14 +98,14 @@ VALID_ROOMS = {
     "Student_Affairs",
 }
 
-# Valid doctors
+# Define valid doctors with underscores
 VALID_DOCTORS = {
-    "Dr_Nada",
-    "Dr_Slim",
-    "Dr_Omar",
+    "dr_nada",
+    "dr_slim",
+    "dr_omar",
 }
 
-# Days of the week
+# List of days of the week for schedule queries
 DAYS_OF_WEEK = [
     "monday",
     "tuesday",
@@ -118,7 +116,7 @@ DAYS_OF_WEEK = [
     "sunday",
 ]
 
-# Expanded labels with synonyms and related terms
+# Expanded labels with synonyms and related terms for NLP classification
 labels = [
     "kill",
     "ask_admission_open",
@@ -157,12 +155,19 @@ labels = [
     "computer science information",
     "computer science department",
     "cs department",
-    "dr nada",
-    "see dr nada",
-    "visit dr nada",
+    # Doctors
+    "dr_nada",
+    "see dr_nada",
+    "visit dr_nada",
+    "dr_slim",
+    "see dr_slim",
+    "visit dr_slim",
+    "dr_omar",
+    "see dr_omar",
+    "visit dr_omar",
 ]
 
-# Add dynamic command variations for each room in VALID_ROOMS
+# Dynamically add command variations for each room
 for room in VALID_ROOMS:
     room_lower = room.replace("_", " ").lower()
     labels.append(room_lower)
@@ -182,7 +187,7 @@ for room in VALID_ROOMS:
         ]
     )
 
-# Add dynamic command variations for each doctor in VALID_DOCTORS
+# Dynamically add command variations for each doctor
 for doctor in VALID_DOCTORS:
     doctor_lower = doctor.replace("_", " ").lower()
     labels.append(doctor_lower)
@@ -199,7 +204,7 @@ for doctor in VALID_DOCTORS:
         ]
     )
 
-# Add days of the week and "now" to labels
+# Add days of the week and "now" to labels for temporal queries
 labels.extend(DAYS_OF_WEEK)
 labels.append("now")
 
@@ -215,6 +220,7 @@ labels.extend(
     ]
 )
 
+# Define weekly schedule for different rooms with opening and closing times
 weekly_schedule = {
     "Financial": {
         day: {"opens_at": "09:00", "closes_at": "17:00"} for day in DAYS_OF_WEEK
@@ -228,27 +234,35 @@ weekly_schedule = {
 }
 
 
-# Helper function to create doctor's schedule
 def create_doctor_schedule():
+    """Helper function to create a schedule for each doctor."""
     schedule = {}
     common_times = [
         "08:30 - 10:00",
         "10:15 - 11:45",
         "12:00 - 13:30",
-        "13:45 - 15:15",
+        # "13:45 - 15:15",  # Commented out, possibly unused
         "15:45 - 17:15",
     ]
-    for doctor in ["dr_nada", "dr_slim", "dr_omar"]:
+    for doctor in VALID_DOCTORS:
         schedule[doctor] = {day: common_times.copy() for day in DAYS_OF_WEEK}
     return schedule
 
 
-# Doctor availability schedule
+# Initialize doctor availability schedules
 doctor_availability = create_doctor_schedule()
 
 
 def check_room_availability(room):
-    """Function to check room availability based on the current day and time."""
+    """
+    Function to check room availability based on the current day and time.
+
+    Args:
+        room (str): The name of the room to check.
+
+    Returns:
+        dict: Dictionary indicating if the room is open, and its opening and closing times.
+    """
     current_day = datetime.now().strftime("%A").lower()
     current_time = datetime.now().strftime("%H:%M")
 
@@ -270,24 +284,33 @@ def check_room_availability(room):
                 "closes_at": closing_time,
             }
 
-    # Default response if no schedule found
+    # Default response if no schedule is found
     return {"is_open": True}
 
 
+# Initialize Flask application with CORS enabled
 app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)  # Enable CORS for all routes if frontend is on a different origin
 
-# State management for conversation
+# State management variables for conversation flow
 pending_action = None
 pending_action_lock = Lock()
 pending_room = None  # Store the room for which we are asking the day
 
-# Configure logging
+# Configure logging to DEBUG level for more detailed logs
 logging.basicConfig(level=logging.DEBUG)
 
 
 def is_affirmative(response):
-    """Check if the response is affirmative."""
+    """
+    Check if the response is affirmative.
+
+    Args:
+        response (str): The user's response text.
+
+    Returns:
+        bool: True if affirmative, False otherwise.
+    """
     affirmative_responses = [
         "yes",
         "yeah",
@@ -301,12 +324,30 @@ def is_affirmative(response):
 
 
 def is_negative(response):
-    """Check if the response is negative."""
+    """
+    Check if the response is negative.
+
+    Args:
+        response (str): The user's response text.
+
+    Returns:
+        bool: True if negative, False otherwise.
+    """
     negative_responses = ["no", "nope", "not now", "maybe later", "negative"]
     return any(word in response.lower() for word in negative_responses)
 
 
 def open_application(command, original_command_text):
+    """
+    Process the command and handle various pending actions.
+
+    Args:
+        command (str): The normalized command label.
+        original_command_text (str): The original user input text.
+
+    Returns:
+        Flask Response: JSON response to be sent back to the frontend.
+    """
     global pending_action, pending_room
     response = ""
     command = command.strip().lower()
@@ -314,14 +355,14 @@ def open_application(command, original_command_text):
     logger.debug(f"open_application called with command: {command}")
     logger.debug(f"Original command text: {original_command_text}")
 
-    # Check for pending actions that require a simple yes/no response
+    # Handle pending actions that require a simple yes/no response
     if pending_action and pending_action.startswith("go_to_"):
         if is_affirmative(original_command_text):
             location = pending_action[len("go_to_") :]
             location_normalized = location.replace("-", "_").replace(" ", "_").title()
             logger.debug(f"User confirmed to go to location: {location_normalized}")
             command_queue.put(f"go_to_{location_normalized}")
-            if location_normalized in [doc.title() for doc in VALID_DOCTORS]:
+            if location_normalized.lower() in VALID_DOCTORS:
                 response = f"Taking you to {location_normalized.replace('_', ' ')}'s office now."
             else:
                 response = (
@@ -374,7 +415,7 @@ def open_application(command, original_command_text):
             if availability["is_available"]:
                 response = f"{doctor_id.replace('_', ' ').title()} is available now. Would you like me to guide you to their office?"
                 with pending_action_lock:
-                    pending_action = f"go_to_{doctor_id.title()}"
+                    pending_action = f"go_to_{doctor_id}"
                 logger.info(f"Responding: {response}")
             else:
                 response = f"{doctor_id.replace('_', ' ').title()} is not available now. {availability['next_availability']} Would you like help with something else?"
@@ -465,7 +506,7 @@ def open_application(command, original_command_text):
     # Normalize the command for matching
     command_normalized = command.replace("dr ", "").replace("doctor ", "").strip()
 
-    # Step 1: Identify room or doctor availability queries
+    # Step 1: Identify room or doctor availability queries using regex
     availability_query_match = re.search(
         r"(is|are|when|what time)(.*?)(open|close|available)", command_normalized
     )
@@ -474,10 +515,10 @@ def open_application(command, original_command_text):
         subject = availability_query_match.group(2).strip()
         logger.debug(f"Subject extracted for availability query: {subject}")
 
-        # Normalize subject
+        # Normalize subject by removing titles and extra spaces
         subject_normalized = subject.replace("dr ", "").replace("doctor ", "").strip()
 
-        # Extract day if specified
+        # Extract day if specified in the command
         day_in_text = extract_day_from_text(command_normalized)
         logger.debug(f"Day extracted from query: {day_in_text}")
 
@@ -525,7 +566,7 @@ def open_application(command, original_command_text):
                 or doctor_normalized in subject_normalized
             ):
                 if day_in_text:
-                    schedule = get_doctor_schedule(doctor.lower(), day_in_text)
+                    schedule = get_doctor_schedule(doctor, day_in_text)
                     if schedule:
                         schedule_str = ", ".join(schedule)
                         response = f"{doctor.replace('_', ' ').title()} is available at the following times on {day_in_text.capitalize()}: {schedule_str}."
@@ -540,7 +581,7 @@ def open_application(command, original_command_text):
                     # Handle 'now' or no day specified
                     if not day_in_text:
                         day_in_text = datetime.now().strftime("%A").lower()
-                    schedule = get_doctor_schedule(doctor.lower(), day_in_text)
+                    schedule = get_doctor_schedule(doctor, day_in_text)
                     if schedule:
                         schedule_str = ", ".join(schedule)
                         response = f"{doctor.replace('_', ' ').title()} is available at the following times today: {schedule_str}."
@@ -558,13 +599,14 @@ def open_application(command, original_command_text):
     room = None
     doctor = None
 
+    # Check if any valid room is mentioned in the command
     for valid_room in VALID_ROOMS:
         if valid_room.replace("_", " ").lower() in command:
             room = valid_room  # e.g., "Admission"
             logger.debug(f"Identified room: {room}")
             break
 
-    # Check for doctor
+    # If no room identified, check for a doctor
     if not room:
         for valid_doctor in VALID_DOCTORS:
             doctor_lower = valid_doctor.replace("_", " ").lower()
@@ -664,7 +706,7 @@ def open_application(command, original_command_text):
                 "Would you like to see if Dr. Nada is available to provide more information?"
             )
             with pending_action_lock:
-                pending_action = "check_doctor_availability_dr-nada"
+                pending_action = "check_doctor_availability_dr_nada"
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -675,6 +717,7 @@ def open_application(command, original_command_text):
                 "german international university",
             ]
         ):
+            # General welcome message for GIU
             response = "Welcome to the German International University! How can I assist you today?"
             response_queue.put(response)
             logger.info(f"Responding: {response}")
@@ -687,21 +730,22 @@ def open_application(command, original_command_text):
             response = f"{room.replace('_', ' ')} is open. Would you like me to guide you there?"
             with pending_action_lock:
                 pending_action = f"go_to_{room}"
+            response_queue.put(response)
             logger.info(f"Responding: {response}")
         else:
             next_open_day, next_open_time = get_next_opening(room)
             response = f"{room.replace('_', ' ')} is currently closed and will open on {next_open_day.capitalize()} at {next_open_time}. Would you like help with something else?"
             with pending_action_lock:
                 pending_action = "ask_if_help_needed"
+            response_queue.put(response)
             logger.info(f"Responding: {response}")
-        response_queue.put(response)
         return jsonify({"response": response})
 
     elif doctor:
         # Handle 'now' in command to represent current day
         if "now" in command_normalized:
             day_in_text = datetime.now().strftime("%A").lower()
-            schedule = get_doctor_schedule(doctor.lower(), day_in_text)
+            schedule = get_doctor_schedule(doctor, day_in_text)
             if schedule:
                 schedule_str = ", ".join(schedule)
                 response = f"{doctor.replace('_', ' ').title()} is available at the following times today: {schedule_str}."
@@ -716,7 +760,7 @@ def open_application(command, original_command_text):
             # Extract day if specified
             day_in_text = extract_day_from_text(command_normalized)
             if day_in_text:
-                schedule = get_doctor_schedule(doctor.lower(), day_in_text)
+                schedule = get_doctor_schedule(doctor, day_in_text)
                 if schedule:
                     schedule_str = ", ".join(schedule)
                     response = f"{doctor.replace('_', ' ').title()} is available at the following times on {day_in_text.capitalize()}: {schedule_str}."
@@ -728,7 +772,7 @@ def open_application(command, original_command_text):
                 logger.info(f"Responding: {response}")
                 return jsonify({"response": response})
             else:
-                availability = get_doctor_availability_data(doctor.lower())
+                availability = get_doctor_availability_data(doctor)
                 if availability["is_available"]:
                     response = f"{doctor.replace('_', ' ').title()} is available now. Would you like me to guide you to their office?"
                     with pending_action_lock:
@@ -750,18 +794,27 @@ def open_application(command, original_command_text):
     else:
         response = "I'm sorry, I didn't quite understand that. Could you please rephrase your request?"
 
+    # Put the response into the queue and log it
     response_queue.put(response)
     logger.info(f"Responding: {response}")
     return jsonify({"response": response})
 
 
-# Helper function to find the next opening day and time
 def get_next_opening(room):
+    """
+    Helper function to find the next opening day and time for a room.
+
+    Args:
+        room (str): The name of the room.
+
+    Returns:
+        tuple: Next opening day and time as strings.
+    """
     current_day = datetime.now().strftime("%A").lower()
     current_time = datetime.now().strftime("%H:%M")
     days_of_week = DAYS_OF_WEEK
 
-    # Find the next day and time the room is open
+    # Iterate through the next 7 days to find the next opening time
     for i in range(1, 8):  # Start from next day, check up to a week ahead
         day_index = (days_of_week.index(current_day) + i) % 7
         next_day = days_of_week[day_index]
@@ -776,7 +829,16 @@ def get_next_opening(room):
 
 
 def get_room_opening_times(room, day):
-    """Get the opening times for a room on a specific day."""
+    """
+    Get the opening times for a room on a specific day.
+
+    Args:
+        room (str): The name of the room.
+        day (str): The day of the week.
+
+    Returns:
+        dict or None: Dictionary with 'opens_at' and 'closes_at' if available, else None.
+    """
     day = day.lower()
     if room in weekly_schedule and day in weekly_schedule[room]:
         return weekly_schedule[room][day]
@@ -785,7 +847,16 @@ def get_room_opening_times(room, day):
 
 
 def get_doctor_schedule(doctor, day):
-    """Get the schedule for a doctor on a specific day."""
+    """
+    Get the schedule for a doctor on a specific day.
+
+    Args:
+        doctor (str): The doctor's identifier.
+        day (str): The day of the week.
+
+    Returns:
+        list or None: List of available time slots if available, else None.
+    """
     day = day.lower()
     doctor = doctor.lower()
     if doctor in doctor_availability and day in doctor_availability[doctor]:
@@ -795,7 +866,15 @@ def get_doctor_schedule(doctor, day):
 
 
 def extract_day_from_text(text):
-    """Extract day of the week from text."""
+    """
+    Extract day of the week from text.
+
+    Args:
+        text (str): The input text.
+
+    Returns:
+        str or None: The day of the week if found, else None.
+    """
     text = text.lower()
     for day in DAYS_OF_WEEK:
         if day in text:
@@ -804,7 +883,15 @@ def extract_day_from_text(text):
 
 
 def get_doctor_availability_data(doctor_id):
-    """Check the availability of a doctor."""
+    """
+    Check the availability of a doctor based on the current time and schedule.
+
+    Args:
+        doctor_id (str): The doctor's identifier.
+
+    Returns:
+        dict: Availability status and next available time if not available.
+    """
     current_day = datetime.now().strftime("%A").lower()
     current_time = datetime.now().strftime("%H:%M")
 
@@ -850,24 +937,40 @@ def get_doctor_availability_data(doctor_id):
 
 @app.route("/")
 def home():
+    """Render the home page."""
     return render_template("index.html")
 
 
 @app.route("/doctor_availability", methods=["GET"])
 def doctor_availability_endpoint():
-    """Fetch doctor availability."""
+    """
+    Fetch doctor availability information.
+
+    Query Parameters:
+        doctor_id (str): The identifier of the doctor.
+
+    Returns:
+        JSON response containing availability data or error message.
+    """
     doctor_id = request.args.get("doctor_id")
     if doctor_id:
         availability = doctor_availability.get(doctor_id.lower(), {})
         if availability:
-            return jsonify({"status": "success", "data": availability})
+            return jsonify({"status": "success", "data": {doctor_id: availability}})
         return jsonify({"status": "error", "message": "Doctor not found"}), 404
     return jsonify({"status": "success", "data": doctor_availability})
 
 
 @app.route("/command", methods=["POST"])
 def handle_command():
-    """Handles the POST request from the frontend, processes the command, and sends back a response."""
+    """
+    Handles the POST request from the frontend, processes the command, and sends back a response.
+
+    Expects JSON data with a 'text' field containing the user's command.
+
+    Returns:
+        JSON response with the assistant's reply.
+    """
     data = request.json
     logger.debug(f"Received data: {data}")
     command_text = data.get("text", "").strip()
@@ -886,19 +989,20 @@ def handle_command():
             # Pass the original command text to open_application for processing
             return open_application(command_text, command_text)
 
-        # Use a more general hypothesis template
+        # Define a hypothesis template for zero-shot classification
         hypothesis_template = "This text is about {}."
 
+        # Perform zero-shot classification on the command text
         result = nlp(
             command_text,
             candidate_labels=labels,
             hypothesis_template=hypothesis_template,
-            multi_label=True,  # Allow multi-label classification
+            multi_label=True,  # Allow multiple labels to be assigned
         )
 
         logger.debug(f"Model result: {result}")
 
-        # Process all labels above a confidence threshold
+        # Process labels that exceed the confidence threshold
         confidence_threshold = 0.3  # Adjust as needed
         matched_labels = [
             label
@@ -921,7 +1025,12 @@ def handle_command():
 
 @app.route("/get_prompt", methods=["GET"])
 def get_prompt():
-    """Return the prompt message if available."""
+    """
+    Return the prompt message if available.
+
+    Returns:
+        JSON response with the prompt or None if no prompt is available.
+    """
     try:
         prompt = prompt_queue.get_nowait()
         return jsonify({"prompt": prompt})
@@ -931,7 +1040,14 @@ def get_prompt():
 
 @app.route("/post_choice", methods=["POST"])
 def post_choice():
-    """Receive the user's choice and put it into command_queue."""
+    """
+    Receive the user's choice and put it into command_queue.
+
+    Expects JSON data with a 'choice' field.
+
+    Returns:
+        JSON response indicating success or error.
+    """
     data = request.json
     choice = data.get("choice")
     if choice:
@@ -942,7 +1058,13 @@ def post_choice():
 
 
 def open_browser_after_delay(url, delay=1):
-    """Waits for a specified delay and then opens the browser."""
+    """
+    Waits for a specified delay and then opens the browser.
+
+    Args:
+        url (str): The URL to open.
+        delay (int): Delay in seconds before opening the browser.
+    """
     time.sleep(delay)
     webbrowser.open(url)
 
@@ -995,6 +1117,14 @@ class CarRobot:
     def __init__(self, x, y, waypoints, waypoint_names, walls, prompt_queue):
         """
         Initialize the CarRobot.
+
+        Args:
+            x (float): Initial x-coordinate.
+            y (float): Initial y-coordinate.
+            waypoints (list): List of waypoint coordinates.
+            waypoint_names (list): List of waypoint names.
+            walls (list): List of Wall objects.
+            prompt_queue (queue.Queue): Queue to send prompts to the frontend.
         """
         self.start_x = x
         self.start_y = y
@@ -1012,18 +1142,16 @@ class CarRobot:
         self.walls = walls
         self.load_image()
         self.state_reason = "Waiting for waypoint"  # Reason for stop or move
-        self.is_returning_to_start = False  # Flag to track returning to start
+        self.is_returning_to_start = False  # Flag for returning to start
         self.prompt_queue = prompt_queue  # Queue to communicate with frontend
         self.sensors = []
         self.create_sensors()
         self.path = []  # List of waypoints to follow
         self.arduino_obstacle_detected = False  # Flag for Arduino obstacle detection
-        self.obstacle_response_sent = (
-            False  # Initialize flag to prevent early responses
-        )
-        self.started_moving = False
+        self.obstacle_response_sent = False  # Flag to prevent multiple responses
+        self.started_moving = False  # Flag to indicate if movement has started
 
-        # Initialize waypoint_dict inside __init__
+        # Initialize waypoint dictionary for easy lookup
         self.waypoint_dict = {
             name: position
             for name, position in zip(self.waypoint_names, self.waypoints)
@@ -1050,11 +1178,16 @@ class CarRobot:
             self.sensors.append((sensor_angle, (sensor_end_x, sensor_end_y)))
 
     def update_sensors(self):
-        """Update sensor positions."""
+        """Update sensor positions based on the current angle."""
         self.create_sensors()
 
     def check_sensors(self):
-        """Check sensors for obstacle detection."""
+        """
+        Check sensors for obstacle detection.
+
+        Returns:
+            list: List of tuples containing sensor angle and detection status.
+        """
         sensor_data = []
         for sensor_angle, (sensor_end_x, sensor_end_y) in self.sensors:
             # Create a line from (self.x, self.y) to (sensor_end_x, sensor_end_y)
@@ -1068,7 +1201,9 @@ class CarRobot:
         return sensor_data
 
     def return_to_start(self):
-        """Set the waypoints for the car to return to the starting point."""
+        """
+        Set the waypoints for the car to return to the starting point.
+        """
         # Define the path back to start using pre-defined waypoints
         if self.current_location_name != "Start":
             path_key = (self.current_location_name, "Start")
@@ -1080,7 +1215,7 @@ class CarRobot:
                 self.current_target = self.path.pop(0)
                 self.destination_name = "Start"
                 self.moving = True
-                self.is_returning_to_start = True  # Flag to indicate return journey
+                self.is_returning_to_start = True  # Indicate return journey
                 self.state_reason = "Returning to start via checkpoints"
                 logger.info(
                     f"Returning to start from {self.current_location_name} following checkpoints."
@@ -1091,12 +1226,21 @@ class CarRobot:
                 )
 
     def line_rect_intersect(self, line, rect):
-        """Check if a line intersects with a rectangle."""
+        """
+        Check if a line intersects with a rectangle.
+
+        Args:
+            line (tuple): Tuple containing two points defining the line.
+            rect (pygame.Rect): The rectangle to check against.
+
+        Returns:
+            bool: True if intersection occurs, False otherwise.
+        """
         rect_lines = [
-            ((rect.left, rect.top), (rect.right, rect.top)),  # Top
-            ((rect.right, rect.top), (rect.right, rect.bottom)),  # Right
-            ((rect.right, rect.bottom), (rect.left, rect.bottom)),  # Bottom
-            ((rect.left, rect.bottom), (rect.left, rect.top)),  # Left
+            ((rect.left, rect.top), (rect.right, rect.top)),  # Top edge
+            ((rect.right, rect.top), (rect.right, rect.bottom)),  # Right edge
+            ((rect.right, rect.bottom), (rect.left, rect.bottom)),  # Bottom edge
+            ((rect.left, rect.bottom), (rect.left, rect.top)),  # Left edge
         ]
         for rect_line in rect_lines:
             if self.line_line_intersect(line, rect_line):
@@ -1104,13 +1248,23 @@ class CarRobot:
         return False
 
     def line_line_intersect(self, line1, line2):
-        """Check if two lines intersect."""
+        """
+        Check if two lines intersect.
+
+        Args:
+            line1 (tuple): First line defined by two points.
+            line2 (tuple): Second line defined by two points.
+
+        Returns:
+            bool: True if lines intersect, False otherwise.
+        """
         (x1, y1), (x2, y2) = line1
         (x3, y3), (x4, y4) = line2
 
         denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1)
         if denom == 0:
             return False  # Lines are parallel
+
         ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom
         ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom
         if 0 <= ua <= 1 and 0 <= ub <= 1:
@@ -1174,7 +1328,9 @@ class CarRobot:
         self.rotate(angle_change)
 
     def move_forward(self):
-        """Move the car forward based on its speed and angle."""
+        """
+        Move the car forward based on its speed and angle.
+        """
         new_x = self.x + self.speed * math.cos(math.radians(self.angle))
         new_y = self.y - self.speed * math.sin(math.radians(self.angle))
         if not self.check_collision(new_x, new_y):
@@ -1185,7 +1341,12 @@ class CarRobot:
             logger.warning("Collision detected! Movement blocked.")
 
     def check_point_reached(self):
-        """Check if the current target point has been reached."""
+        """
+        Check if the current target point has been reached.
+
+        Returns:
+            bool: True if the target is reached, False otherwise.
+        """
         if not self.current_target:
             return False
 
@@ -1221,7 +1382,15 @@ class CarRobot:
         return False
 
     def get_waypoint_name(self, position):
-        """Get the name of the waypoint given its position."""
+        """
+        Get the name of the waypoint given its position.
+
+        Args:
+            position (tuple): The (x, y) coordinates of the waypoint.
+
+        Returns:
+            str or None: The name of the waypoint if found, else None.
+        """
         for name, pos in zip(self.waypoint_names, self.waypoints):
             if position == pos:
                 return name
@@ -1272,6 +1441,13 @@ class CarRobot:
         return collision
 
     def set_target(self, target_point, destination_name):
+        """
+        Set a new target for the car to navigate to.
+
+        Args:
+            target_point (tuple): The (x, y) coordinates of the target waypoint.
+            destination_name (str): The name of the destination.
+        """
         self.destination_name = destination_name
         self.moving = True
         self.state_reason = f"Moving towards {destination_name.replace('_', ' ')}"
@@ -1292,7 +1468,10 @@ class CarRobot:
         logger.info(f"Set target for {destination_name}: {self.current_target}")
 
     def update(self):
-        """Update the car's state by rotating and moving towards the target."""
+        """
+        Update the car's state by rotating and moving towards the target.
+        Handles obstacle detection and movement logic.
+        """
         if self.moving and self.current_target:
             # Set started_moving to True once movement begins
             self.started_moving = True
@@ -1355,6 +1534,12 @@ class CarRobot:
                 self.obstacle_response_sent = False  # Reset the flag when stopped
 
     def draw_status(self, surface):
+        """
+        Draw the car's current status and reason on the screen.
+
+        Args:
+            surface (pygame.Surface): The surface to draw the status on.
+        """
         font = pygame.font.SysFont(None, 24)
         status = "MOVING" if self.moving else "STOPPED"
 
@@ -1364,14 +1549,19 @@ class CarRobot:
 
         # Determine the width of the status text to place reason text with a gap
         status_width = status_text.get_width()
-        margin = 20  # Adjust this value for more or less space between texts
+        margin = 20  # Space between status and reason texts
 
         # Draw status and reason side by side with a margin
         surface.blit(status_text, (10, HEIGHT + 10))
         surface.blit(reason_text, (10 + status_width + margin, HEIGHT + 10))
 
     def draw(self, surface):
-        """Render the car and waypoints on the screen."""
+        """
+        Render the car and waypoints on the screen.
+
+        Args:
+            surface (pygame.Surface): The surface to draw on.
+        """
         rotated_image, rect = self.update_mask()
         surface.blit(rotated_image, rect.topleft)
 
@@ -1427,10 +1617,10 @@ class CarRobot:
         ("Admission", "M216"): ["M216"],
         ("Admission", "M215"): ["M216", "M215"],
         ("M215", "Start"): ["Start"],
-        ("Start", "Dr_Nada"): ["M215", "M216", "Dr_Nada"],
-        ("Dr_Nada", "Start"): ["M216", "M215", "Start"],
-        ("M216", "Dr_Nada"): ["Dr_Nada"],
-        ("Dr_Nada", "M216"): ["M216"],
+        ("Start", "dr_nada"): ["M215", "M216", "dr_nada"],
+        ("dr_nada", "Start"): ["M216", "M215", "Start"],
+        ("M216", "dr_nada"): ["dr_nada"],
+        ("dr_nada", "M216"): ["M216"],
         # Add more paths as needed
     }
 
@@ -1463,11 +1653,12 @@ class SerialReader(threading.Thread):
         self.game = game  # Reference to the Game for sending commands
         self.state = "STOPPED"  # Initialize to STOPPED
         self.lock = threading.Lock()
-        self.obstacle_response_sent = False  # Add this line
+        self.obstacle_response_sent = False  # Flag to prevent multiple responses
 
     def run(self):
         """Run the thread to continuously read from the serial port."""
         try:
+            # Open the serial connection
             self.ser = serial.Serial(self.serial_port, self.baud_rate, timeout=1)
             logger.info(
                 f"Connected to Arduino on {self.serial_port} at {self.baud_rate} baud."
@@ -1592,14 +1783,14 @@ class Game:
             (600, 150),  # M215
             (600, 450),  # M216
             (150, 450),  # Admission
-            (500, 300),  # Dr_Nada's office (Updated position)
+            (500, 300),  # dr_nada's office (Updated position)
         ]
         self.waypoint_names = [
             "Start",
             "M215",
             "M216",
             "Admission",
-            "Dr_Nada",
+            "dr_nada",
         ]
 
         # Map waypoint names to positions
@@ -1614,10 +1805,17 @@ class Game:
             wall.draw(self.screen)
 
     def choose_waypoint(self, mouse_x, mouse_y):
-        """Choose a waypoint based on mouse click and update the car's target."""
+        """
+        Choose a waypoint based on mouse click and update the car's target.
+
+        Args:
+            mouse_x (int): The x-coordinate of the mouse click.
+            mouse_y (int): The y-coordinate of the mouse click.
+        """
         closest_index = None
         min_distance = float("inf")
 
+        # Find the closest waypoint within a threshold distance
         for idx, (wp_x, wp_y) in enumerate(self.waypoints):
             distance = math.hypot(mouse_x - wp_x, mouse_y - wp_y)
             if (
@@ -1633,7 +1831,7 @@ class Game:
             logger.info(
                 f"Selected waypoint {destination_name}: ({target_point[0]}, {target_point[1]})"
             )
-            # Send 'START_SERVO' command to Arduino
+            # Send 'START_SERVO' command to Arduino to indicate movement
             self.send_command("START_SERVO")
 
     def send_command(self, command):
@@ -1646,6 +1844,9 @@ class Game:
         self.serial_reader.send_command(command)
 
     def process_commands(self):
+        """
+        Process any incoming commands from Flask via the command_queue.
+        """
         try:
             while True:
                 command = command_queue.get_nowait()
@@ -1659,32 +1860,45 @@ class Game:
                         location.replace("-", "_").replace(" ", "_").title()
                     )
 
-                    # Check if the location exists in waypoint_names
-                    if location_normalized in self.waypoint_names:
-                        target_point = self.waypoint_dict[location_normalized]
-                        self.car.set_target(target_point, location_normalized)
-                        logger.info(
-                            f"Setting target to {location_normalized}: {target_point}"
+                    # Check if the location exists in waypoint_names or is a valid doctor
+                    if (
+                        location_normalized.lower() in VALID_DOCTORS
+                        or location_normalized in self.waypoint_names
+                    ):
+                        target_point = self.waypoint_dict.get(
+                            location_normalized.lower(),
+                            self.waypoint_dict.get(location_normalized),
                         )
-                        self.send_command("START_SERVO")
+                        if target_point:
+                            self.car.set_target(target_point, location_normalized)
+                            logger.info(
+                                f"Setting target to {location_normalized}: {target_point}"
+                            )
+                            self.send_command("START_SERVO")
+                        else:
+                            logger.warning(f"Unknown location: {location_normalized}")
                     else:
                         logger.warning(f"Unknown location: {location_normalized}")
                 elif command == "user_choice_done":
+                    # User has completed their choice, return to start
                     self.car.return_to_start()
                     response_queue.put("Goodbye, going to start point.")
                 elif command == "user_choice_go_another":
+                    # User wants to choose another waypoint
                     self.car.state_reason = "Waiting for waypoint"
                     response_queue.put("Where do you want to go next")
         except queue.Empty:
-            pass
+            pass  # No commands to process
 
     def process_responses(self):
-        """Process any incoming responses from the response queue."""
+        """
+        Process any incoming responses from the response_queue.
+        """
         try:
             while True:
                 response = response_queue.get_nowait()
                 logger.info(f"Processing response: {response}")
-                # Handle TTS in a separate thread to avoid blocking
+                # Handle Text-to-Speech (TTS) in a separate thread to avoid blocking
                 threading.Thread(
                     target=self.perform_tts, args=(response,), daemon=True
                 ).start()
@@ -1692,11 +1906,16 @@ class Game:
             pass  # No responses to process
 
     def perform_tts(self, text):
-        """Generate and play TTS audio for the given text."""
+        """
+        Generate and play TTS audio for the given text.
+
+        Args:
+            text (str): The text to convert to speech.
+        """
         try:
-            temp_file = f"response_{uuid.uuid4()}.mp3"
-            tts = gTTS(text=text, lang="en")
-            tts.save(temp_file)
+            temp_file = f"response_{uuid.uuid4()}.mp3"  # Temporary file name
+            tts = gTTS(text=text, lang="en")  # Initialize gTTS
+            tts.save(temp_file)  # Save the speech to a file
             logger.info(f"TTS audio saved as {temp_file}")
 
             # Play the generated speech audio
@@ -1710,7 +1929,9 @@ class Game:
             logger.error(f"Error in perform_tts: {e}")
 
     def run_flask_app(self):
-        """Run the Flask app."""
+        """
+        Run the Flask app and open the browser after a short delay.
+        """
         # URL to open
         url = "http://127.0.0.1:5000/"
 
@@ -1744,7 +1965,7 @@ class Game:
             # Process any incoming responses from Flask
             self.process_responses()
 
-            # Update car movement
+            # Update car movement based on current state and sensors
             self.car.update()
 
             # State Tracking: Send commands based on state transitions
@@ -1765,7 +1986,7 @@ class Game:
             self.previous_moving_state = current_moving_state
 
             # Render environment and car
-            self.screen.fill(WHITE)
+            self.screen.fill(WHITE)  # Clear the screen with white background
             self.draw_walls()
             self.car.draw(self.screen)
             self.car.draw_status(self.screen)  # Draw car status on the screen
@@ -1774,7 +1995,7 @@ class Game:
             pygame.display.flip()
             self.clock.tick(FPS)
 
-        # Clean up and stop serial reader thread
+        # Clean up and stop serial reader thread when the game loop ends
         self.serial_reader.stop()
         self.serial_reader.join()
 
@@ -1786,7 +2007,9 @@ class Game:
 
 if __name__ == "__main__":
     try:
+        # Initialize and run the game
         game = Game()
         game.run()
     except Exception as e:
+        # Log any unexpected exceptions
         logger.exception(f"An unexpected error occurred: {e}")

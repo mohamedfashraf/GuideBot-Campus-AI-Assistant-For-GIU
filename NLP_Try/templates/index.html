@@ -190,16 +190,16 @@
       }
 
       /* Grid Column Classes for Back Button */
-      .back-col-3 {
-        grid-column: 3 / 4;
+      .back-col-1 {
+        grid-column: span 1;
       }
 
       .back-col-2 {
-        grid-column: 2 / 3;
+        grid-column: span 2;
       }
 
-      .back-col-all {
-        grid-column: 1 / -1;
+      .back-col-3 {
+        grid-column: span 3;
       }
 
       /* Adjust modal for smaller screens */
@@ -214,6 +214,24 @@
         padding: 0.5rem 1rem; /* Reduced padding */
         font-size: 0.75rem; /* text-xs */
       }
+
+      /* Loader Styles */
+      .loader {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #818cf8; /* Tailwind's indigo-300 */
+        border-radius: 50%;
+        width: 3rem;
+        height: 3rem;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      /* Utility class to hide elements */
+      .hidden { display: none; }
     </style>
   </head>
   <body
@@ -247,9 +265,9 @@
             class="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-gray-300 text-sm"
           >
             <option value="">Select Doctor</option>
-            <option value="dr-slim">Dr. Slim</option>
-            <option value="dr-nada">Dr. Nada</option>
-            <option value="dr-omar">Dr. Omar</option>
+            <option value="dr_slim">Dr. Slim</option>
+            <option value="dr_nada">Dr. Nada</option>
+            <option value="dr_omar">Dr. Omar</option>
           </select>
         </div>
       </div>
@@ -307,6 +325,11 @@
       </div>
     </div>
 
+    <!-- Loader (Hidden by Default) -->
+    <div id="loader" class="hidden fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50 z-50">
+      <div class="loader bg-indigo-500 rounded-full w-16 h-16 animate-spin"></div>
+    </div>
+
     <!-- Wave Background -->
     <div class="wave-background">
       <div class="wave"></div>
@@ -332,19 +355,26 @@
         }
       });
 
-      // Fetch Doctor Availability from Backend
-      async function fetchDoctorAvailability() {
+      // Fetch Doctor Availability from Backend with doctorId
+      async function fetchDoctorAvailability(doctorId) {
+        console.log(`Fetching availability for doctor ID: ${doctorId}`);
+        document.getElementById("loader").classList.remove("hidden"); // Show loader
         try {
           const response = await fetch(
-            "http://127.0.0.1:5000/doctor_availability"
+            `http://127.0.0.1:5000/doctor_availability?doctor_id=${doctorId}`
           );
+          console.log(`Fetch response status: ${response.status}`);
           if (!response.ok) {
             throw new Error("Failed to fetch doctor availability.");
           }
           const data = await response.json();
+          console.log("Fetched doctor availability data:", data);
+          document.getElementById("loader").classList.add("hidden"); // Hide loader
           return data;
         } catch (error) {
           console.error("Error fetching doctor availability:", error);
+          alert("Failed to fetch doctor availability. Please try again.");
+          document.getElementById("loader").classList.add("hidden"); // Hide loader
           return {}; // Return an empty object if there's an error
         }
       }
@@ -355,11 +385,19 @@
 
       // Function to display day picker after doctor selection
       async function displayDatePicker(doctorId) {
+        console.log(`Displaying date picker for doctor ID: ${doctorId}`);
         const scheduleDiv = document.getElementById("schedule");
         scheduleDiv.innerHTML = ""; // Clear previous content
 
-        // Fetch availability dynamically from backend
-        const doctorAvailability = await fetchDoctorAvailability();
+        if (!doctorId) {
+          scheduleDiv.innerHTML =
+            '<p class="text-gray-700 dark:text-gray-300 text-center mt-4">Please select a doctor to view availability.</p>';
+          console.log("No doctor selected. Prompting user to select a doctor.");
+          return;
+        }
+
+        // Fetch availability dynamically from backend with doctorId
+        const doctorAvailability = await fetchDoctorAvailability(doctorId);
 
         if (
           doctorId &&
@@ -367,6 +405,10 @@
           doctorAvailability.data[doctorId]
         ) {
           const availability = doctorAvailability.data[doctorId];
+          console.log(
+            `Availability for ${doctorId}:`,
+            JSON.stringify(availability)
+          );
 
           const scheduleContent = document.createElement("div");
           scheduleContent.className =
@@ -380,6 +422,7 @@
 
           // Generate list of available days
           const days = Object.keys(availability);
+          console.log(`Available days for ${doctorId}:`, days);
 
           // Day Picker Dropdown
           const daySelectContainer = document.createElement("div");
@@ -399,12 +442,13 @@
           days.forEach((day) => {
             const option = document.createElement("option");
             option.value = day;
-            option.textContent = day;
+            option.textContent = day.charAt(0).toUpperCase() + day.slice(1);
             daySelect.appendChild(option);
           });
 
           daySelect.addEventListener("change", () => {
             selectedDate = daySelect.value;
+            console.log(`Selected day: ${selectedDate}`);
             displayTimes(doctorId, selectedDate, availability);
           });
 
@@ -413,16 +457,21 @@
           scheduleDiv.appendChild(scheduleContent);
         } else {
           scheduleDiv.innerHTML =
-            '<p class="text-gray-700 dark:text-gray-300 text-center mt-4">Please select a doctor to view availability.</p>';
+            '<p class="text-gray-700 dark:text-gray-300 text-center mt-4">Doctor not found or no availability available.</p>';
+          console.log("Doctor not found or no availability available.");
         }
       }
 
       // Function to display available times for a selected day
       function displayTimes(doctorId, day, availability) {
+        console.log(
+          `Displaying available times for doctor ID: ${doctorId} on ${day}`
+        );
         const scheduleDiv = document.getElementById("schedule");
         scheduleDiv.innerHTML = ""; // Clear previous content
 
         const times = availability[day];
+        console.log(`Available times on ${day}:`, times);
 
         const scheduleContent = document.createElement("div");
         scheduleContent.className =
@@ -431,7 +480,9 @@
         const scheduleHeader = document.createElement("h2");
         scheduleHeader.className =
           "text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4";
-        scheduleHeader.textContent = `Available Times on ${day}:`;
+        scheduleHeader.textContent = `Available Times on ${day.charAt(
+          0
+        )}. ${day.slice(1)}:`;
         scheduleContent.appendChild(scheduleHeader);
 
         if (times && times.length > 0) {
@@ -448,10 +499,10 @@
             timeButton.addEventListener("click", () => {
               selectedTime = time;
               alert(
-                `You have selected ${day} at ${selectedTime} with ${doctorId.replace(
-                  "dr-",
-                  "Dr. "
-                )}.`
+                `You have selected ${day.charAt(0).toUpperCase() + day.slice(1)} at ${selectedTime} with Dr. ${doctorId
+                  .replace("dr_", "")
+                  .replace("_", " ")
+                  .toUpperCase()}.\n\nThis feature is currently under development.`
               );
             });
             timesContainer.appendChild(timeButton);
@@ -466,10 +517,10 @@
             timeButton.addEventListener("click", () => {
               selectedTime = time;
               alert(
-                `You have selected ${day} at ${selectedTime} with ${doctorId.replace(
-                  "dr-",
-                  "Dr. "
-                )}.`
+                `You have selected ${day.charAt(0).toUpperCase() + day.slice(1)} at ${selectedTime} with Dr. ${doctorId
+                  .replace("dr_", "")
+                  .replace("_", " ")
+                  .toUpperCase()}.\n\nThis feature is currently under development.`
               );
             });
             timesContainer.appendChild(timeButton);
@@ -485,14 +536,14 @@
 
           // Determine placement of Back Button based on number of secondRowTimes
           if (secondRowTimes.length === 2) {
-            // Place Back Button in the third column
-            backButton.classList.add("back-col-3");
+            // Place Back Button in the third column (span 1 column)
+            backButton.classList.add("back-col-1");
           } else if (secondRowTimes.length === 1) {
-            // Place Back Button in the second column
+            // Place Back Button spanning 2 columns
             backButton.classList.add("back-col-2");
           } else if (secondRowTimes.length === 0) {
-            // If no times in second row, place Back Button alone spanning all columns
-            backButton.classList.add("back-col-all");
+            // Place Back Button spanning all 3 columns
+            backButton.classList.add("back-col-3");
           }
 
           timesContainer.appendChild(backButton);
@@ -500,6 +551,7 @@
         } else {
           scheduleContent.innerHTML +=
             '<p class="text-gray-700 dark:text-gray-300">No available times on this day. Please select another day.</p>';
+          console.log("No available times on this day.");
         }
 
         scheduleDiv.appendChild(scheduleContent);
@@ -510,6 +562,7 @@
         selectedDoctor = this.value;
         selectedDate = "";
         selectedTime = "";
+        console.log(`Doctor selected: ${selectedDoctor}`);
         displayDatePicker(selectedDoctor);
       });
 
@@ -522,16 +575,19 @@
 
       recognition.onresult = (event) => {
         const voiceCommand = event.results[0][0].transcript;
+        console.log(`Voice command received: ${voiceCommand}`);
         document.getElementById("commandInput").value = voiceCommand;
         submitCommand(); // Auto-submit after receiving voice command
       };
 
       document.getElementById("micBtn").addEventListener("click", function () {
+        console.log("Mic button clicked. Starting voice recognition...");
         recognition.start();
         document.getElementById("micBtn").classList.add("recording");
       });
 
       recognition.onend = () => {
+        console.log("Voice recognition ended.");
         document.getElementById("micBtn").classList.remove("recording");
       };
 
@@ -542,6 +598,7 @@
 
       async function submitCommand() {
         const command = document.getElementById("commandInput").value;
+        console.log(`Submitting command: ${command}`);
 
         if (command.trim() === "") {
           alert("Please enter a command.");
@@ -552,6 +609,9 @@
         displayLastInteraction(command, "Thinking...");
 
         try {
+          // Show loader while processing
+          document.getElementById("loader").classList.remove("hidden");
+
           // Send command to Flask backend
           const response = await fetch("http://127.0.0.1:5000/command", {
             method: "POST",
@@ -561,10 +621,13 @@
             body: JSON.stringify({ text: command }),
           });
 
-          const data = await response.json();
+          console.log(`Backend response status: ${response.status}`);
+          if (!response.ok) {
+            throw new Error(`Backend responded with status ${response.status}`);
+          }
 
-          // Handle the response data as needed
-          console.log(data.response);
+          const data = await response.json();
+          console.log("Backend response data:", data.response);
 
           // Update robot's response in the last interaction area
           displayLastInteraction(command, data.response);
@@ -574,6 +637,9 @@
             command,
             "Sorry, there was an error processing your command."
           );
+        } finally {
+          // Hide loader after processing
+          document.getElementById("loader").classList.add("hidden");
         }
 
         // Clear the input field
@@ -582,6 +648,9 @@
 
       // Function to display the last command and response
       function displayLastInteraction(userCommand, botResponse) {
+        console.log(
+          `Displaying interaction - User: ${userCommand}, Bot: ${botResponse}`
+        );
         const lastInteractionDiv = document.getElementById("lastInteraction");
         lastInteractionDiv.innerHTML = ""; // Clear previous interaction
 
@@ -617,10 +686,12 @@
 
       // Function to check for prompts from the backend
       function checkForPrompt() {
+        console.log("Checking for prompts from backend...");
         fetch("http://127.0.0.1:5000/get_prompt")
           .then((response) => response.json())
           .then((data) => {
             if (data.prompt) {
+              console.log("Received prompt from backend:", data.prompt);
               // Display the prompt to the user
               displayPrompt(data.prompt);
             }
@@ -633,8 +704,10 @@
 
       // Function to display prompt in a modal
       function displayPrompt(promptMessage) {
+        console.log(`Displaying prompt: ${promptMessage}`);
         // Check if the prompt is already displayed
         if (document.getElementById("promptModal")) {
+          console.log("Prompt modal already displayed.");
           return;
         }
 
@@ -696,6 +769,7 @@
 
       // Function to send user choice to backend
       function sendUserChoice(choice) {
+        console.log(`Sending user choice: ${choice}`);
         fetch("http://127.0.0.1:5000/post_choice", {
           method: "POST",
           headers: {
@@ -707,6 +781,8 @@
           .then((data) => {
             if (data.status !== "success") {
               console.error("Error sending user choice:", data.message);
+            } else {
+              console.log("User choice sent successfully.");
             }
           })
           .catch((error) => console.error("Error sending user choice:", error));
