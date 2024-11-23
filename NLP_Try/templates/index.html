@@ -18,50 +18,14 @@
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
       rel="stylesheet"
     />
+    <!-- Include lottie-web Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.9.6/lottie.min.js"></script>
     <style>
-      /* Wave Animation */
-      .wave-background {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        height: 220px;
-        overflow: hidden;
-        z-index: -1;
-      }
-
-      .wave {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        width: 200%;
-        height: 100%;
-        background-repeat: repeat-x;
-        background-size: 50% 100%;
-      }
-
-      .wave:nth-child(1) {
-        background-image: url('data:image/svg+xml;utf8,<svg width="1600" height="220" xmlns="http://www.w3.org/2000/svg"><path d="M0,80 C400,220 1200,-80 1600,80 V220 H0 V80 Z" fill="%23818cf8" opacity="0.5" stroke="%236366f1" stroke-width="2"/></svg>');
-        animation: wave-animation 10s linear infinite;
-      }
-
-      .wave:nth-child(2) {
-        background-image: url('data:image/svg+xml;utf8,<svg width="1600" height="220" xmlns="http://www.w3.org/2000/svg"><path d="M0,90 C500,0 1100,220 1600,90 V220 H0 V90 Z" fill="%23818cf8" opacity="0.3" stroke="%236366f1" stroke-width="2"/></svg>');
-        animation: wave-animation 15s linear infinite reverse;
-      }
-
-      .wave:nth-child(3) {
-        background-image: url('data:image/svg+xml;utf8,<svg width="1600" height="220" xmlns="http://www.w3.org/2000/svg"><path d="M0,100 C600,280 1000,-100 1600,100 V220 H0 V100 Z" fill="%23818cf8" opacity="0.2" stroke="%236366f1" stroke-width="2"/></svg>');
-        animation: wave-animation 20s linear infinite;
-      }
-
-      @keyframes wave-animation {
-        0% {
-          transform: translateX(0);
-        }
-        100% {
-          transform: translateX(-50%);
-        }
+      /* Reset default browser margins and paddings */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
       }
 
       /* Fade-in-up Animation */
@@ -171,8 +135,15 @@
       }
 
       @keyframes wave {
-        0%, 100% { height: 10px; opacity: 0.5; }
-        50% { height: 20px; opacity: 1; }
+        0%,
+        100% {
+          height: 10px;
+          opacity: 0.5;
+        }
+        50% {
+          height: 20px;
+          opacity: 1;
+        }
       }
 
       /* Responsive Button Layout for Available Times */
@@ -249,7 +220,40 @@
       }
 
       /* Utility class to hide elements */
-      .hidden { display: none; }
+      .hidden {
+        display: none;
+      }
+
+      /* Responsive Lottie Animation */
+      .lottie-animation {
+        width: 120vw; /* Increase width beyond viewport width */
+        height: 120vh; /* Increase height beyond viewport height */
+        position: fixed; /* Fixed positioning relative to the viewport */
+        top: -10vh; /* Adjust to keep centered vertically */
+        left: -10vw; /* Adjust to keep centered horizontally */
+        z-index: -1; /* Behind other elements */
+        pointer-events: none; /* Allow interactions with elements above */
+        overflow: hidden; /* Prevent overflow */
+      }
+
+      /* Optionally adjust size on different screen sizes */
+      @media (min-width: 768px) {
+        .lottie-animation {
+          width: 130vw; /* Larger on medium screens */
+          height: 130vh; /* Maintain aspect ratio */
+          top: -15vh; /* Adjust to keep centered */
+          left: -15vw; /* Adjust to keep centered */
+        }
+      }
+
+      @media (min-width: 1024px) {
+        .lottie-animation {
+          width: 140vw; /* Even larger on large screens */
+          height: 140vh; /* Maintain aspect ratio */
+          top: -20vh; /* Adjust to keep centered */
+          left: -20vw; /* Adjust to keep centered */
+        }
+      }
     </style>
   </head>
   <body
@@ -270,7 +274,7 @@
     </header>
 
     <!-- Main Content Area -->
-    <div class="flex-grow overflow-auto px-4">
+    <div class="flex-grow overflow-auto px-4 pb-48 md:pb-40 lg:pb-48">
       <!-- Doctor Selection -->
       <div class="dropdown-section text-center mt-6">
         <div
@@ -343,21 +347,32 @@
       </div>
     </div>
 
-    <!-- Loader (Removed or Commented Out) -->
-    <!-- 
-    <div id="loader" class="hidden fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50 z-50">
-      <div class="loader bg-indigo-500 rounded-full w-16 h-16 animate-spin"></div>
-    </div>
-    -->
+    <!-- Lottie Animation Container -->
+    <div
+      id="lottie-container"
+      class="lottie-animation"
+      aria-hidden="true"
+    ></div>
 
-    <!-- Wave Background -->
-    <div class="wave-background">
-      <div class="wave"></div>
-      <div class="wave"></div>
-      <div class="wave"></div>
-    </div>
+    <!-- Fallback for No JavaScript -->
+    <noscript>
+      <img
+        src="static/images/fallback.png"
+        alt="Fallback Animation"
+        class="lottie-animation"
+      />
+    </noscript>
 
     <script>
+      // Initialize Lottie Animation
+      lottie.loadAnimation({
+        container: document.getElementById("lottie-container"), // the dom element
+        renderer: "svg",
+        loop: true,
+        autoplay: true,
+        path: "static/images/Animation - 1732323461164.json", // the path to the animation json
+      });
+
       // Dark Mode Toggle Script
       const themeToggleBtn = document.getElementById("theme-toggle");
       const themeToggleIcon = document.getElementById("theme-toggle-icon");
@@ -517,7 +532,9 @@
             timeButton.addEventListener("click", () => {
               selectedTime = time;
               alert(
-                `You have selected ${day.charAt(0).toUpperCase() + day.slice(1)} at ${selectedTime} with Dr. ${doctorId
+                `You have selected ${
+                  day.charAt(0).toUpperCase() + day.slice(1)
+                } at ${selectedTime} with Dr. ${doctorId
                   .replace("dr_", "")
                   .replace("_", " ")
                   .toUpperCase()}.\n\nThis feature is currently under development.`
@@ -535,7 +552,9 @@
             timeButton.addEventListener("click", () => {
               selectedTime = time;
               alert(
-                `You have selected ${day.charAt(0).toUpperCase() + day.slice(1)} at ${selectedTime} with Dr. ${doctorId
+                `You have selected ${
+                  day.charAt(0).toUpperCase() + day.slice(1)
+                } at ${selectedTime} with Dr. ${doctorId
                   .replace("dr_", "")
                   .replace("_", " ")
                   .toUpperCase()}.\n\nThis feature is currently under development.`
@@ -696,13 +715,14 @@
           // Insert Music Waves Animation
           const musicWave = document.createElement("div");
           musicWave.className = "music-wave";
-          
-          for (let i = 0; i < 3; i++) { // Create 3 bars
+
+          for (let i = 0; i < 3; i++) {
+            // Create 3 bars
             const bar = document.createElement("div");
             bar.className = "bar";
             musicWave.appendChild(bar);
           }
-          
+
           botBubbleContent.appendChild(musicWave);
         } else {
           // Insert Actual Response Text
@@ -817,6 +837,21 @@
             }
           })
           .catch((error) => console.error("Error sending user choice:", error));
+      }
+
+      // Respect User's Reduced Motion Preferences
+      const prefersReducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+      ).matches;
+
+      if (prefersReducedMotion) {
+        // Stop the animation
+        const animation = lottie.getRegisteredAnimations()[0];
+        if (animation) {
+          animation.stop();
+        }
+        // Optionally hide the animation container
+        document.getElementById("lottie-container").style.display = "none";
       }
     </script>
   </body>
