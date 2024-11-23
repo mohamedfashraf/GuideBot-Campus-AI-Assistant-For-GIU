@@ -365,12 +365,27 @@
 
     <script>
       // Initialize Lottie Animation
-      lottie.loadAnimation({
-        container: document.getElementById("lottie-container"), // the dom element
-        renderer: "svg",
+      const animation = lottie.loadAnimation({
+        container: document.getElementById("lottie-container"),
+        renderer: "canvas", // Use "canvas" instead of "svg"
         loop: true,
         autoplay: true,
-        path: "static/images/Animation - 1732323461164.json", // the path to the animation json
+        path: "static/images/Animation - 1732323461164.json",
+        rendererSettings: {
+          progressiveLoad: true,
+        },
+      });
+
+      // Control playback speed
+      animation.setSpeed(0.35); // Slow down animation (0.5 = half speed)
+
+      // Optional: Add event listeners for debugging or interaction
+      animation.addEventListener("DOMLoaded", () => {
+        console.log("Lottie animation loaded successfully.");
+      });
+
+      animation.addEventListener("complete", () => {
+        console.log("Lottie animation has completed.");
       });
 
       // Dark Mode Toggle Script
@@ -759,8 +774,8 @@
           .catch((error) => console.error("Error checking for prompt:", error));
       }
 
-      // Call checkForPrompt every 2 seconds
-      setInterval(checkForPrompt, 2000);
+      // Call checkForPrompt every # seconds
+      setInterval(checkForPrompt, 5000);
 
       // Function to display prompt in a modal
       function displayPrompt(promptMessage) {
