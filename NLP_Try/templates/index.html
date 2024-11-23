@@ -7,18 +7,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Include Tailwind Config after CDN script -->
+    <!-- Tailwind Config for Dark Mode -->
     <script>
       tailwind.config = {
         darkMode: "class",
       };
     </script>
-    <!-- Include Font Awesome -->
+    <!-- Font Awesome -->
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
       rel="stylesheet"
     />
-    <!-- Include lottie-web Library -->
+    <!-- Lottie-Web Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.9.6/lottie.min.js"></script>
     <style>
       /* Reset default browser margins and paddings */
@@ -44,24 +44,35 @@
         animation: fadeInUp 0.5s ease-out forwards;
       }
 
-      /* Pulse Animation for the Mic Button */
-      .mic-btn.recording {
-        animation: pulse 2s infinite;
-      }
-
-      @keyframes pulse {
+      /* Flashing Red Animation for Icon */
+      @keyframes flash-red {
         0% {
-          transform: scale(1);
-          box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7);
+          color: #ef4444; /* Tailwind's red-600 */
         }
-        70% {
-          transform: scale(1.1);
-          box-shadow: 0 0 0 30px rgba(99, 102, 241, 0);
+        50% {
+          color: #dc2626; /* Tailwind's red-700 */
         }
         100% {
-          transform: scale(1);
-          box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+          color: #ef4444; /* Tailwind's red-600 */
         }
+      }
+
+      /* Recording State Styles */
+      .mic-btn.recording .fa-microphone,
+      .mic-btn.recording::after {
+        animation: flash-red 1s infinite;
+      }
+
+      /* Icon Swap During Recording */
+      .mic-btn.recording .fa-microphone {
+        display: none;
+      }
+
+      .mic-btn.recording::after {
+        content: "\f04d"; /* Font Awesome's fa-stop-circle icon Unicode */
+        font-family: "Font Awesome 5 Free"; /* Ensure correct Font Awesome version */
+        font-weight: 900; /* Font Awesome's solid icons */
+        font-size: 1.25rem; /* Adjust size as needed */
       }
 
       /* Custom Styles for Improved Dropdown */
@@ -76,7 +87,7 @@
         width: 100%;
         padding-right: 3rem; /* Adequate padding to accommodate the arrow */
         height: 2.5rem; /* Ensures proper size for smaller screens */
-        border-radius: 0.375rem; /* Changed from default to match Tailwind's rounded-md */
+        border-radius: 0.375rem; /* Tailwind's rounded-md */
         font-size: 0.875rem; /* text-sm */
         line-height: 1.25rem; /* Ensures vertical alignment */
         border: 1px solid #d1d5db; /* Tailwind's gray-300 */
@@ -159,7 +170,7 @@
         background-color: #818cf8; /* Tailwind's indigo-300 */
         color: white;
         border: none;
-        border-radius: 0.375rem; /* Changed to rounded-md */
+        border-radius: 0.375rem; /* Tailwind's rounded-md */
         cursor: pointer;
         transition: background-color 0.3s;
         height: 2rem; /* Consistent height */
@@ -179,7 +190,7 @@
         background-color: #4f46e5; /* Tailwind's indigo-600 */
         color: white;
         border: none;
-        border-radius: 0.375rem; /* Changed to rounded-md */
+        border-radius: 0.375rem; /* Tailwind's rounded-md */
         cursor: pointer;
         transition: background-color 0.3s;
         height: 2rem; /* Consistent height */
@@ -254,6 +265,72 @@
           left: -20vw; /* Adjust to keep centered */
         }
       }
+
+      /* Tooltip Styling */
+      .tooltip {
+        position: absolute;
+        bottom: 100%; /* Position above the button */
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: rgba(31, 41, 55, 0.9); /* Tailwind's gray-800 with opacity */
+        color: white;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.375rem; /* Tailwind's rounded-md */
+        font-size: 0.75rem; /* text-xs */
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.2s ease-in-out;
+        pointer-events: none;
+        z-index: 10;
+      }
+
+      /* Tooltip Visibility on Hover */
+      .mic-btn:hover .tooltip,
+      .submit-btn:hover .tooltip {
+        opacity: 1;
+      }
+
+      /* Ensure buttons have no background or borders */
+      button.mic-btn,
+      button.submit-btn {
+        background-color: transparent;
+        border: none;
+      }
+
+      /* Loading Spinner Styling */
+      .spinner-border {
+        border-top-color: transparent;
+        border-right-color: transparent;
+        border-bottom-color: #4f46e5; /* Tailwind's indigo-600 */
+        border-left-color: #4f46e5;
+      }
+
+      /* Centered Loader */
+      #loader {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 50; /* Above other elements */
+      }
+
+      /* Enhanced Placeholder Styling */
+      #commandInput::placeholder {
+        color: #6b7280; /* Tailwind's gray-500 */
+        opacity: 1; /* Ensure placeholder text is fully opaque */
+      }
+
+      /* Subtle Transition for Input Field */
+      #commandInput {
+        transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+      }
+
+      /* Responsive Adjustments */
+      @media (max-width: 640px) {
+        .input-wrapper {
+          padding: 0 1rem;
+        }
+      }
     </style>
   </head>
   <body
@@ -276,7 +353,7 @@
     <!-- Main Content Area -->
     <div class="flex-grow overflow-auto px-4 pb-48 md:pb-40 lg:pb-48">
       <!-- Doctor Selection -->
-      <div class="dropdown-section text-center mt-4"> <!-- Adjusted mt-6 to mt-4 -->
+      <div class="dropdown-section text-center mt-4">
         <div
           class="w-full max-w-sm mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 fade-in-up custom-select"
         >
@@ -312,42 +389,49 @@
     <!-- Command Input Section -->
     <div class="input-section w-full">
       <div class="input-wrapper mx-auto w-full max-w-md mb-4">
-        <!-- Changed 'rounded-full' to 'rounded-md' for consistent styling -->
         <div
-          class="flex items-center justify-center bg-white dark:bg-gray-800 rounded-md px-3 py-2 shadow-lg mx-4"
+          class="flex items-center justify-center bg-white dark:bg-gray-800 rounded-md px-3 py-2 shadow-lg mx-4 h-12"
         >
           <!-- Mic Button -->
-          <!-- Changed 'rounded-full' to 'rounded-md' and adjusted sizing if needed -->
           <button
             id="micBtn"
-            class="mic-btn flex items-center justify-center bg-gradient-to-br from-indigo-500 to-indigo-600 text-white w-10 h-10 rounded-md mr-2 shadow-xl transition duration-200"
+            class="mic-btn flex items-center justify-center bg-transparent border-none text-indigo-500 w-8 h-8 mr-2 transition hover:text-indigo-700 focus:outline-none relative"
             aria-label="Start Voice Command"
+            aria-describedby="micBtnTooltip"
           >
-            <!-- Use Font Awesome Microphone Icon -->
             <i class="fa-solid fa-microphone text-lg"></i>
+            <!-- Tooltip -->
+            <span id="micBtnTooltip" class="tooltip">Start Voice Command</span>
           </button>
 
           <!-- Input Field -->
-          <!-- Changed 'rounded-full' to 'rounded-md' -->
           <input
             type="text"
             id="commandInput"
             placeholder="Speak or type commands..."
-            class="flex-grow px-3 py-1.5 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 text-sm"
+            class="flex-grow px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 text-sm transition-colors duration-200"
             aria-label="Command Input"
           />
 
           <!-- Submit Button -->
-          <!-- Changed 'rounded-full' to 'rounded-md' -->
           <button
             id="submitBtn"
-            class="submit-btn flex items-center justify-center bg-gradient-to-br from-indigo-500 to-indigo-600 text-white w-10 h-10 rounded-md ml-2 shadow-xl transition duration-200"
+            class="submit-btn flex items-center justify-center bg-transparent border-none text-indigo-500 w-8 h-8 ml-2 transition hover:text-indigo-700 focus:outline-none relative"
             aria-label="Submit Command"
+            aria-describedby="submitBtnTooltip"
           >
-            <!-- Send Icon -->
             <i class="fa-solid fa-paper-plane text-lg"></i>
+            <!-- Tooltip -->
+            <span id="submitBtnTooltip" class="tooltip">Submit Command</span>
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loader" class="flex justify-center items-center hidden">
+      <div class="spinner-border animate-spin inline-block w-8 h-8 border-4 rounded-full" role="status">
+        <span class="visually-hidden">Loading...</span>
       </div>
     </div>
 
@@ -412,7 +496,8 @@
       // Fetch Doctor Availability from Backend with doctorId
       async function fetchDoctorAvailability(doctorId) {
         console.log(`Fetching availability for doctor ID: ${doctorId}`);
-        // Removed global loader
+        // Show loader
+        document.getElementById("loader").classList.remove("hidden");
         try {
           const response = await fetch(
             `http://127.0.0.1:5000/doctor_availability?doctor_id=${doctorId}`
@@ -428,6 +513,9 @@
           console.error("Error fetching doctor availability:", error);
           alert("Failed to fetch doctor availability. Please try again.");
           return {}; // Return an empty object if there's an error
+        } finally {
+          // Hide loader
+          document.getElementById("loader").classList.add("hidden");
         }
       }
 
@@ -637,14 +725,28 @@
       };
 
       document.getElementById("micBtn").addEventListener("click", function () {
-        console.log("Mic button clicked. Starting voice recognition...");
-        recognition.start();
-        document.getElementById("micBtn").classList.add("recording");
+        if (this.classList.contains("recording")) {
+          // If already recording, stop recording
+          recognition.stop();
+          this.classList.remove("recording");
+          this.querySelector(".tooltip").textContent = "Start Voice Command";
+          console.log("Recording stopped.");
+        } else {
+          // Start recording
+          console.log("Mic button clicked. Starting voice recognition...");
+          recognition.start();
+          this.classList.add("recording");
+          this.querySelector(".tooltip").textContent = "Stop Recording";
+          console.log("Recording started.");
+        }
       });
 
       recognition.onend = () => {
         console.log("Voice recognition ended.");
         document.getElementById("micBtn").classList.remove("recording");
+        document
+          .getElementById("micBtn")
+          .querySelector(".tooltip").textContent = "Start Voice Command";
       };
 
       // Submit button handler
@@ -725,7 +827,7 @@
 
         const userBubbleContent = document.createElement("div");
         userBubbleContent.className =
-          "max-w-xs px-4 py-2 rounded-lg shadow bg-indigo-500 text-white rounded-br-none text-sm"; /* Reduced padding and font size */
+          "max-w-xs px-4 py-2 rounded-lg shadow bg-indigo-500 text-white rounded-br-none text-sm";
         userBubbleContent.textContent = userCommand;
 
         userMessageBubble.appendChild(userBubbleContent);
@@ -737,7 +839,7 @@
 
         const botBubbleContent = document.createElement("div");
         botBubbleContent.className =
-          "max-w-xs px-4 py-2 rounded-lg shadow bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-none text-sm"; /* Reduced padding and font size */
+          "max-w-xs px-4 py-2 rounded-lg shadow bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-none text-sm";
 
         if (botResponse === "Thinking...") {
           // Insert Music Waves Animation
@@ -778,7 +880,7 @@
           .catch((error) => console.error("Error checking for prompt:", error));
       }
 
-      // Call checkForPrompt every # seconds
+      // Call checkForPrompt every 5 seconds
       setInterval(checkForPrompt, 5000);
 
       // Function to display prompt in a modal
@@ -799,11 +901,11 @@
         // Create modal content
         const content = document.createElement("div");
         content.className =
-          "bg-white dark:bg-gray-800 rounded-lg w-11/12 md:w-1/3 mx-auto p-4 text-center"; /* Reduced padding */
+          "bg-white dark:bg-gray-800 rounded-lg w-11/12 md:w-1/3 mx-auto p-4 text-center";
 
         const message = document.createElement("p");
         message.className =
-          "text-gray-800 dark:text-gray-200 text-sm mb-4"; /* Reduced font size and margin */
+          "text-gray-800 dark:text-gray-200 text-sm mb-4";
         message.textContent =
           promptMessage +
           ". Are you done or do you want to go to another place?";
@@ -813,12 +915,12 @@
         // Create buttons container
         const buttonsContainer = document.createElement("div");
         buttonsContainer.className =
-          "flex justify-center space-x-2"; /* Reduced space between buttons */
+          "flex justify-center space-x-2";
 
         // Create buttons
         const doneButton = document.createElement("button");
         doneButton.className =
-          "px-3 py-1 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-xs"; /* Reduced padding and font size */
+          "px-3 py-1 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-xs";
         doneButton.textContent = "Done";
         doneButton.addEventListener("click", () => {
           sendUserChoice("user_choice_done");
@@ -827,7 +929,7 @@
 
         const goAnotherButton = document.createElement("button");
         goAnotherButton.className =
-          "px-3 py-1 bg-gray-300 hover:bg-gray-400 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 rounded-md text-xs"; /* Reduced padding and font size */
+          "px-3 py-1 bg-gray-300 hover:bg-gray-400 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 rounded-md text-xs";
         goAnotherButton.textContent = "Go Another";
         goAnotherButton.addEventListener("click", () => {
           sendUserChoice("user_choice_go_another");
@@ -866,6 +968,16 @@
           })
           .catch((error) => console.error("Error sending user choice:", error));
       }
+
+      // Close modal on Esc key press
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          const modal = document.getElementById("promptModal");
+          if (modal) {
+            document.body.removeChild(modal);
+          }
+        }
+      });
 
       // Respect User's Reduced Motion Preferences
       const prefersReducedMotion = window.matchMedia(
