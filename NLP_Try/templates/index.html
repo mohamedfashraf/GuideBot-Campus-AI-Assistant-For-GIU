@@ -633,6 +633,15 @@
         .getElementById("submitBtn")
         .addEventListener("click", submitCommand);
 
+      // Add event listener to detect "Enter" key press in the input field
+      document
+        .getElementById("commandInput")
+        .addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            submitCommand();
+          }
+        });
+
       async function submitCommand() {
         const command = document.getElementById("commandInput").value;
         console.log(`Submitting command: ${command}`);
