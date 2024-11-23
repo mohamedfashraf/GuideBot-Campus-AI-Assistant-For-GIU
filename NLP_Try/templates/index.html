@@ -3,57 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <title>Robot Navigation Interface</title>
+    <!-- Viewport Meta Tag -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Include Font Awesome -->
+    <!-- Tailwind Config for Dark Mode -->
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+      };
+    </script>
+    <!-- Font Awesome -->
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
       rel="stylesheet"
     />
+    <!-- Lottie-Web Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.9.6/lottie.min.js"></script>
     <style>
-      /* Wave Animation */
-      .wave-background {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        height: 220px;
-        overflow: hidden;
-        z-index: -1;
-      }
-
-      .wave {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        width: 200%;
-        height: 100%;
-        background-repeat: repeat-x;
-        background-size: 50% 100%;
-      }
-
-      .wave:nth-child(1) {
-        background-image: url('data:image/svg+xml;utf8,<svg width="1600" height="220" xmlns="http://www.w3.org/2000/svg"><path d="M0,80 C400,220 1200,-80 1600,80 V220 H0 V80 Z" fill="%23818cf8" opacity="0.5" stroke="%236366f1" stroke-width="2"/></svg>');
-        animation: wave-animation 10s linear infinite;
-      }
-
-      .wave:nth-child(2) {
-        background-image: url('data:image/svg+xml;utf8,<svg width="1600" height="220" xmlns="http://www.w3.org/2000/svg"><path d="M0,90 C500,0 1100,220 1600,90 V220 H0 V90 Z" fill="%23818cf8" opacity="0.3" stroke="%236366f1" stroke-width="2"/></svg>');
-        animation: wave-animation 15s linear infinite reverse;
-      }
-
-      .wave:nth-child(3) {
-        background-image: url('data:image/svg+xml;utf8,<svg width="1600" height="220" xmlns="http://www.w3.org/2000/svg"><path d="M0,100 C600,280 1000,-100 1600,100 V220 H0 V100 Z" fill="%23818cf8" opacity="0.2" stroke="%236366f1" stroke-width="2"/></svg>');
-        animation: wave-animation 20s linear infinite;
-      }
-
-      @keyframes wave-animation {
-        0% {
-          transform: translateX(0);
-        }
-        100% {
-          transform: translateX(-50%);
-        }
+      /* Reset default browser margins and paddings */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
       }
 
       /* Fade-in-up Animation */
@@ -72,75 +44,343 @@
         animation: fadeInUp 0.5s ease-out forwards;
       }
 
-      /* Pulse Animation for the Mic Button */
-      .mic-btn.recording {
-        animation: pulse 2s infinite;
-      }
-
-      @keyframes pulse {
+      /* Flashing Red Animation for Icon */
+      @keyframes flash-red {
         0% {
-          transform: scale(1);
-          box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7);
+          color: #ef4444; /* Tailwind's red-600 */
         }
-        70% {
-          transform: scale(1.1);
-          box-shadow: 0 0 0 30px rgba(99, 102, 241, 0);
+        50% {
+          color: #dc2626; /* Tailwind's red-700 */
         }
         100% {
-          transform: scale(1);
-          box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+          color: #ef4444; /* Tailwind's red-600 */
+        }
+      }
+
+      /* Recording State Styles */
+      .mic-btn.recording .fa-microphone,
+      .mic-btn.recording::after {
+        animation: flash-red 1s infinite;
+      }
+
+      /* Icon Swap During Recording */
+      .mic-btn.recording .fa-microphone {
+        display: none;
+      }
+
+      .mic-btn.recording::after {
+        content: "\f04d"; /* Font Awesome's fa-stop-circle icon Unicode */
+        font-family: "Font Awesome 5 Free"; /* Ensure correct Font Awesome version */
+        font-weight: 900; /* Font Awesome's solid icons */
+        font-size: 1.25rem; /* Adjust size as needed */
+      }
+
+      /* Custom Styles for Improved Dropdown */
+      .custom-select {
+        position: relative;
+        width: 100%;
+      }
+
+      .custom-select select {
+        appearance: none;
+        background: none;
+        width: 100%;
+        padding-right: 3rem; /* Adequate padding to accommodate the arrow */
+        height: 2.5rem; /* Ensures proper size for smaller screens */
+        border-radius: 0.375rem; /* Tailwind's rounded-md */
+        font-size: 0.875rem; /* text-sm */
+        line-height: 1.25rem; /* Ensures vertical alignment */
+        border: 1px solid #d1d5db; /* Tailwind's gray-300 */
+        background-color: #ffffff; /* Light mode */
+        color: #374151; /* Tailwind's gray-700 */
+        box-sizing: border-box; /* Ensure padding is included in width */
+      }
+
+      .custom-select select:focus {
+        outline: none;
+        border-color: #6366f1; /* Tailwind's indigo-500 */
+        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5); /* Tailwind's indigo-500 with opacity */
+      }
+
+      .custom-select::after {
+        content: "";
+        position: absolute;
+        top: 50%; /* Center the arrow vertically */
+        right: 2.5rem; /* Adjusted to move the arrow slightly left */
+        width: 10px; /* Reduced size for a sleeker look */
+        height: 10px;
+        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"><path d="M2,4 L6,8 L10,4" stroke="%234f46e5" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: contain;
+        transform: translateY(-50%);
+        pointer-events: none;
+      }
+
+      /* Music Waves Animation */
+      .music-wave {
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 4px; /* Space between bars */
+      }
+
+      .music-wave .bar {
+        width: 4px;
+        height: 10px;
+        background-color: #818cf8; /* Tailwind's indigo-300 */
+        border-radius: 2px;
+        animation: wave 1s infinite ease-in-out;
+      }
+
+      .music-wave .bar:nth-child(1) {
+        animation-delay: -0.4s;
+      }
+
+      .music-wave .bar:nth-child(2) {
+        animation-delay: -0.2s;
+      }
+
+      .music-wave .bar:nth-child(3) {
+        animation-delay: 0s;
+      }
+
+      @keyframes wave {
+        0%,
+        100% {
+          height: 10px;
+          opacity: 0.5;
+        }
+        50% {
+          height: 20px;
+          opacity: 1;
+        }
+      }
+
+      /* Responsive Button Layout for Available Times */
+      .times-container {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.5rem;
+      }
+
+      /* Times Button Styling */
+      .times-button {
+        padding: 0.25rem 0.5rem; /* Reduced padding for smaller buttons */
+        background-color: #818cf8; /* Tailwind's indigo-300 */
+        color: white;
+        border: none;
+        border-radius: 0.375rem; /* Tailwind's rounded-md */
+        cursor: pointer;
+        transition: background-color 0.3s;
+        height: 2rem; /* Consistent height */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem; /* text-xs */
+      }
+
+      .times-button:hover {
+        background-color: #6366f1; /* Tailwind's indigo-500 */
+      }
+
+      /* Back Button Styling */
+      .back-button {
+        padding: 0.25rem 0.5rem; /* Reduced padding for smaller buttons */
+        background-color: #4f46e5; /* Tailwind's indigo-600 */
+        color: white;
+        border: none;
+        border-radius: 0.375rem; /* Tailwind's rounded-md */
+        cursor: pointer;
+        transition: background-color 0.3s;
+        height: 2rem; /* Consistent height */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem; /* text-xs */
+      }
+
+      .back-button:hover {
+        background-color: #4338ca; /* Tailwind's indigo-700 */
+      }
+
+      /* Grid Column Classes for Back Button */
+      .back-col-1 {
+        grid-column: span 1;
+      }
+
+      .back-col-2 {
+        grid-column: span 2;
+      }
+
+      .back-col-3 {
+        grid-column: span 3;
+      }
+
+      /* Adjust modal for smaller screens */
+      .modal-content {
+        padding: 1rem; /* Reduced padding */
+        font-size: 0.875rem; /* text-sm */
+      }
+
+      /* Adjust interaction bubbles */
+      .user-bubble,
+      .bot-bubble {
+        padding: 0.5rem 1rem; /* Reduced padding */
+        font-size: 0.75rem; /* text-xs */
+      }
+
+      /* Utility class to hide elements */
+      .hidden {
+        display: none;
+      }
+
+      /* Responsive Lottie Animation */
+      .lottie-animation {
+        width: 120vw; /* Increase width beyond viewport width */
+        height: 120vh; /* Increase height beyond viewport height */
+        position: fixed; /* Fixed positioning relative to the viewport */
+        top: -10vh; /* Adjust to keep centered vertically */
+        left: -10vw; /* Adjust to keep centered horizontally */
+        z-index: -1; /* Behind other elements */
+        pointer-events: none; /* Allow interactions with elements above */
+        overflow: hidden; /* Prevent overflow */
+      }
+
+      /* Optionally adjust size on different screen sizes */
+      @media (min-width: 768px) {
+        .lottie-animation {
+          width: 130vw; /* Larger on medium screens */
+          height: 130vh; /* Maintain aspect ratio */
+          top: -15vh; /* Adjust to keep centered */
+          left: -15vw; /* Adjust to keep centered */
+        }
+      }
+
+      @media (min-width: 1024px) {
+        .lottie-animation {
+          width: 140vw; /* Even larger on large screens */
+          height: 140vh; /* Maintain aspect ratio */
+          top: -20vh; /* Adjust to keep centered */
+          left: -20vw; /* Adjust to keep centered */
+        }
+      }
+
+      /* Tooltip Styling */
+      .tooltip {
+        position: absolute;
+        bottom: 100%; /* Position above the button */
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: rgba(31, 41, 55, 0.9); /* Tailwind's gray-800 with opacity */
+        color: white;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.375rem; /* Tailwind's rounded-md */
+        font-size: 0.75rem; /* text-xs */
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.2s ease-in-out;
+        pointer-events: none;
+        z-index: 10;
+      }
+
+      /* Tooltip Visibility on Hover */
+      .mic-btn:hover .tooltip,
+      .submit-btn:hover .tooltip {
+        opacity: 1;
+      }
+
+      /* Ensure buttons have no background or borders */
+      button.mic-btn,
+      button.submit-btn {
+        background-color: transparent;
+        border: none;
+      }
+
+      /* Loading Spinner Styling */
+      .spinner-border {
+        border-top-color: transparent;
+        border-right-color: transparent;
+        border-bottom-color: #4f46e5; /* Tailwind's indigo-600 */
+        border-left-color: #4f46e5;
+      }
+
+      /* Centered Loader */
+      #loader {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 50; /* Above other elements */
+      }
+
+      /* Enhanced Placeholder Styling */
+      #commandInput::placeholder {
+        color: #6b7280; /* Tailwind's gray-500 */
+        opacity: 1; /* Ensure placeholder text is fully opaque */
+      }
+
+      /* Subtle Transition for Input Field */
+      #commandInput {
+        transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+      }
+
+      /* Responsive Adjustments */
+      @media (max-width: 640px) {
+        .input-wrapper {
+          padding: 0 1rem;
         }
       }
     </style>
   </head>
   <body
-    class="bg-gradient-to-b from-indigo-50 to-white flex flex-col h-screen relative overflow-hidden"
+    class="bg-gradient-to-b from-indigo-50 to-white dark:from-gray-900 dark:to-gray-800 flex flex-col h-screen relative overflow-hidden"
   >
+    <!-- Header Section -->
+    <header class="flex items-center justify-between px-4 py-2">
+      <!-- Dark Mode Toggle -->
+      <div class="flex items-center">
+        <button
+          id="theme-toggle"
+          class="text-gray-500 dark:text-gray-300 focus:outline-none"
+          aria-label="Toggle Dark Mode"
+        >
+          <i id="theme-toggle-icon" class="fas fa-moon text-3xl"></i>
+        </button>
+      </div>
+    </header>
+
     <!-- Main Content Area -->
-    <div class="flex-grow overflow-auto">
-      <!-- Doctor Availability Dropdown centered at the top -->
-      <div class="dropdown-section text-center mt-10">
-        <div class="w-full max-w-sm mx-auto bg-white rounded-lg shadow-md p-4">
-          <div class="relative">
-            <select
-              id="doctor"
-              name="doctor"
-              class="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">Select Doctor</option>
-              <option value="dr-slim">Dr. Slim</option>
-              <option value="dr-nada">Dr. Nada</option>
-              <option value="dr-omar">Dr. Omar</option>
-            </select>
-            <!-- Dropdown Arrow Icon -->
-            <svg
-              class="absolute right-3 top-3 h-4 w-4 text-gray-400 pointer-events-none"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-          </div>
+    <div class="flex-grow overflow-auto px-4 pb-48 md:pb-40 lg:pb-48">
+      <!-- Doctor Selection -->
+      <div class="dropdown-section text-center mt-4">
+        <div
+          class="w-full max-w-sm mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 fade-in-up custom-select"
+        >
+          <select
+            id="doctor"
+            name="doctor"
+            aria-label="Select Doctor"
+            class="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-gray-300 text-sm"
+          >
+            <option value="">Select Doctor</option>
+            <option value="dr_slim">Dr. Slim</option>
+            <option value="dr_nada">Dr. Nada</option>
+            <option value="dr_omar">Dr. Omar</option>
+          </select>
         </div>
       </div>
 
       <!-- Availability Schedule Section -->
       <div
         id="schedule"
-        class="schedule-section mt-6 mx-auto max-w-md md:max-w-lg px-4"
+        class="schedule-section mt-8 mx-auto max-w-sm md:max-w-md px-4"
       ></div>
 
       <!-- Last Interaction Area -->
       <div
         id="lastInteraction"
-        class="last-interaction-section mt-6 mx-auto max-w-md md:max-w-lg px-4"
+        class="last-interaction-section mt-8 mx-auto max-w-sm md:max-w-md px-4"
       >
         <!-- Last command and response will be displayed here -->
       </div>
@@ -148,17 +388,20 @@
 
     <!-- Command Input Section -->
     <div class="input-section w-full">
-      <div class="input-wrapper mx-auto w-full max-w-lg mb-4">
+      <div class="input-wrapper mx-auto w-full max-w-md mb-4">
         <div
-          class="flex items-center justify-center bg-white rounded-full px-4 py-2 shadow-lg mx-4"
+          class="flex items-center justify-center bg-white dark:bg-gray-800 rounded-md px-3 py-2 shadow-lg mx-4 h-12"
         >
           <!-- Mic Button -->
           <button
             id="micBtn"
-            class="mic-btn flex items-center justify-center bg-gradient-to-br from-indigo-500 to-indigo-600 text-white w-12 h-12 rounded-full mr-3 shadow-xl transition duration-200"
+            class="mic-btn flex items-center justify-center bg-transparent border-none text-indigo-500 w-8 h-8 mr-2 transition hover:text-indigo-700 focus:outline-none relative"
+            aria-label="Start Voice Command"
+            aria-describedby="micBtnTooltip"
           >
-            <!-- Use Font Awesome Microphone Icon -->
-            <i class="fa-solid fa-microphone"></i>
+            <i class="fa-solid fa-microphone text-lg"></i>
+            <!-- Tooltip -->
+            <span id="micBtnTooltip" class="tooltip">Start Voice Command</span>
           </button>
 
           <!-- Input Field -->
@@ -166,151 +409,294 @@
             type="text"
             id="commandInput"
             placeholder="Speak or type commands..."
-            class="flex-grow px-4 py-2 text-gray-700 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            class="flex-grow px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 text-sm transition-colors duration-200"
+            aria-label="Command Input"
           />
 
           <!-- Submit Button -->
           <button
             id="submitBtn"
-            class="submit-btn flex items-center justify-center bg-gradient-to-br from-indigo-500 to-indigo-600 text-white w-12 h-12 rounded-full ml-3 shadow-xl transition duration-200"
+            class="submit-btn flex items-center justify-center bg-transparent border-none text-indigo-500 w-8 h-8 ml-2 transition hover:text-indigo-700 focus:outline-none relative"
+            aria-label="Submit Command"
+            aria-describedby="submitBtnTooltip"
           >
-            <!-- Send Icon -->
-            <i class="fa-solid fa-paper-plane"></i>
+            <i class="fa-solid fa-paper-plane text-lg"></i>
+            <!-- Tooltip -->
+            <span id="submitBtnTooltip" class="tooltip">Submit Command</span>
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Wave Background -->
-    <div class="wave-background">
-      <div class="wave"></div>
-      <div class="wave"></div>
-      <div class="wave"></div>
+    <!-- Loading Spinner -->
+    <div id="loader" class="flex justify-center items-center hidden">
+      <div class="spinner-border animate-spin inline-block w-8 h-8 border-4 rounded-full" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
     </div>
 
+    <!-- Lottie Animation Container -->
+    <div
+      id="lottie-container"
+      class="lottie-animation"
+      aria-hidden="true"
+    ></div>
+
+    <!-- Fallback for No JavaScript -->
+    <noscript>
+      <img
+        src="static/images/fallback.png"
+        alt="Fallback Animation"
+        class="lottie-animation"
+      />
+    </noscript>
+
     <script>
-      // Sample availability data for doctors
-      const doctorAvailability = {
-        "dr-slim": {
-          "2024-10-02": [
-            "10:00 AM - 11:00 AM",
-            "11:00 AM - 12:00 PM",
-            "12:00 PM - 1:00 PM",
-            "1:00 PM - 2:00 PM",
-            "2:00 PM - 3:00 PM",
-            "3:00 PM - 4:00 PM",
-            "4:00 PM - 5:00 PM",
-            "5:00 PM - 6:00 PM",
-          ],
-          "2024-10-03": ["2:00 PM - 3:00 PM", "3:00 PM - 4:00 PM"],
-          "2024-10-04": ["9:00 AM - 10:00 AM", "10:00 AM - 11:00 AM"],
-          "2024-10-05": ["1:00 PM - 2:00 PM", "2:00 PM - 3:00 PM"],
-          "2024-10-06": ["10:00 AM - 11:00 AM", "11:00 AM - 12:00 PM"],
+      // Initialize Lottie Animation
+      const animation = lottie.loadAnimation({
+        container: document.getElementById("lottie-container"),
+        renderer: "canvas", // Use "canvas" instead of "svg"
+        loop: true,
+        autoplay: true,
+        path: "static/images/Animation - 1732323461164.json",
+        rendererSettings: {
+          progressiveLoad: true,
         },
-        "dr-nada": {
-          "2024-10-01": ["1:00 PM - 2:00 PM", "2:00 PM - 3:00 PM"],
-          "2024-10-02": ["10:00 AM - 11:00 AM", "11:00 AM - 12:00 PM"],
-          "2024-10-03": ["3:00 PM - 4:00 PM", "4:00 PM - 5:00 PM"],
-        },
-        "dr-omar": {
-          "2024-10-01": ["8:00 AM - 9:00 AM", "9:00 AM - 10:00 AM"],
-          "2024-10-02": ["12:00 PM - 1:00 PM", "1:00 PM - 2:00 PM"],
-          "2024-10-03": ["4:00 PM - 5:00 PM", "5:00 PM - 6:00 PM"],
-        },
-      };
+      });
 
-      let selectedDoctor = "";
-      let selectedDate = "";
+      // Control playback speed
+      animation.setSpeed(0.35); // Slow down animation (0.5 = half speed)
 
-      // Function to display date picker after doctor selection
-      function displayDatePicker(doctorId) {
-        const scheduleDiv = document.getElementById("schedule");
-        scheduleDiv.innerHTML = ""; // Clear previous content
+      // Optional: Add event listeners for debugging or interaction
+      animation.addEventListener("DOMLoaded", () => {
+        console.log("Lottie animation loaded successfully.");
+      });
 
-        if (doctorId && doctorAvailability[doctorId]) {
-          const scheduleContent = document.createElement("div");
-          scheduleContent.className =
-            "w-full bg-white rounded-lg shadow-lg p-6 fade-in-up";
+      animation.addEventListener("complete", () => {
+        console.log("Lottie animation has completed.");
+      });
 
-          const scheduleHeader = document.createElement("h2");
-          scheduleHeader.className =
-            "text-2xl font-semibold text-gray-800 mb-4";
-          scheduleHeader.textContent = "Select a Date:";
-          scheduleContent.appendChild(scheduleHeader);
+      // Dark Mode Toggle Script
+      const themeToggleBtn = document.getElementById("theme-toggle");
+      const themeToggleIcon = document.getElementById("theme-toggle-icon");
+      const htmlElement = document.documentElement;
 
-          // Date Picker Input
-          const dateInput = document.createElement("input");
-          dateInput.type = "date";
-          dateInput.id = "datePicker";
-          dateInput.className =
-            "w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500";
-
-          dateInput.addEventListener("change", () => {
-            selectedDate = dateInput.value;
-            displayTimes(doctorId, selectedDate);
-          });
-
-          scheduleContent.appendChild(dateInput);
-          scheduleDiv.appendChild(scheduleContent);
+      themeToggleBtn.addEventListener("click", () => {
+        if (htmlElement.classList.contains("dark")) {
+          htmlElement.classList.remove("dark");
+          themeToggleIcon.classList.remove("fa-sun");
+          themeToggleIcon.classList.add("fa-moon");
         } else {
-          scheduleDiv.innerHTML =
-            '<p class="text-gray-700 text-center mt-8">Please select a doctor to view availability.</p>';
+          htmlElement.classList.add("dark");
+          themeToggleIcon.classList.remove("fa-moon");
+          themeToggleIcon.classList.add("fa-sun");
+        }
+      });
+
+      // Fetch Doctor Availability from Backend with doctorId
+      async function fetchDoctorAvailability(doctorId) {
+        console.log(`Fetching availability for doctor ID: ${doctorId}`);
+        // Show loader
+        document.getElementById("loader").classList.remove("hidden");
+        try {
+          const response = await fetch(
+            `http://127.0.0.1:5000/doctor_availability?doctor_id=${doctorId}`
+          );
+          console.log(`Fetch response status: ${response.status}`);
+          if (!response.ok) {
+            throw new Error("Failed to fetch doctor availability.");
+          }
+          const data = await response.json();
+          console.log("Fetched doctor availability data:", data);
+          return data;
+        } catch (error) {
+          console.error("Error fetching doctor availability:", error);
+          alert("Failed to fetch doctor availability. Please try again.");
+          return {}; // Return an empty object if there's an error
+        } finally {
+          // Hide loader
+          document.getElementById("loader").classList.add("hidden");
         }
       }
 
-      // Function to display available times for a selected date
-      function displayTimes(doctorId, date) {
+      let selectedDoctor = "";
+      let selectedDate = "";
+      let selectedTime = "";
+
+      // Function to display day picker after doctor selection
+      async function displayDatePicker(doctorId) {
+        console.log(`Displaying date picker for doctor ID: ${doctorId}`);
         const scheduleDiv = document.getElementById("schedule");
         scheduleDiv.innerHTML = ""; // Clear previous content
 
-        const times = doctorAvailability[doctorId][date];
+        if (!doctorId) {
+          scheduleDiv.innerHTML =
+            '<p class="text-gray-700 dark:text-gray-300 text-center mt-4">Please select a doctor to view availability.</p>';
+          console.log("No doctor selected. Prompting user to select a doctor.");
+          return;
+        }
+
+        // Fetch availability dynamically from backend with doctorId
+        const doctorAvailability = await fetchDoctorAvailability(doctorId);
+
+        if (
+          doctorId &&
+          doctorAvailability.data &&
+          doctorAvailability.data[doctorId]
+        ) {
+          const availability = doctorAvailability.data[doctorId];
+          console.log(
+            `Availability for ${doctorId}:`,
+            JSON.stringify(availability)
+          );
+
+          const scheduleContent = document.createElement("div");
+          scheduleContent.className =
+            "w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 fade-in-up";
+
+          const scheduleHeader = document.createElement("h2");
+          scheduleHeader.className =
+            "text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4";
+          scheduleHeader.textContent = "Select a Day:";
+          scheduleContent.appendChild(scheduleHeader);
+
+          // Generate list of available days
+          const days = Object.keys(availability);
+          console.log(`Available days for ${doctorId}:`, days);
+
+          // Day Picker Dropdown
+          const daySelectContainer = document.createElement("div");
+          daySelectContainer.className = "custom-select";
+
+          const daySelect = document.createElement("select");
+          daySelect.id = "dayPicker";
+          daySelect.setAttribute("aria-label", "Select Day");
+          daySelect.className =
+            "w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-gray-300 text-sm";
+
+          const defaultOption = document.createElement("option");
+          defaultOption.value = "";
+          defaultOption.textContent = "Select a Day";
+          daySelect.appendChild(defaultOption);
+
+          days.forEach((day) => {
+            const option = document.createElement("option");
+            option.value = day;
+            option.textContent = day.charAt(0).toUpperCase() + day.slice(1);
+            daySelect.appendChild(option);
+          });
+
+          daySelect.addEventListener("change", () => {
+            selectedDate = daySelect.value;
+            console.log(`Selected day: ${selectedDate}`);
+            displayTimes(doctorId, selectedDate, availability);
+          });
+
+          daySelectContainer.appendChild(daySelect);
+          scheduleContent.appendChild(daySelectContainer);
+          scheduleDiv.appendChild(scheduleContent);
+        } else {
+          scheduleDiv.innerHTML =
+            '<p class="text-gray-700 dark:text-gray-300 text-center mt-4">Doctor not found or no availability available.</p>';
+          console.log("Doctor not found or no availability available.");
+        }
+      }
+
+      // Function to display available times for a selected day
+      function displayTimes(doctorId, day, availability) {
+        console.log(
+          `Displaying available times for doctor ID: ${doctorId} on ${day}`
+        );
+        const scheduleDiv = document.getElementById("schedule");
+        scheduleDiv.innerHTML = ""; // Clear previous content
+
+        const times = availability[day];
+        console.log(`Available times on ${day}:`, times);
 
         const scheduleContent = document.createElement("div");
         scheduleContent.className =
-          "w-full bg-white rounded-lg shadow-lg p-6 fade-in-up";
+          "w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 fade-in-up";
 
         const scheduleHeader = document.createElement("h2");
-        scheduleHeader.className = "text-2xl font-semibold text-gray-800 mb-4";
-        scheduleHeader.textContent = `Available Times on ${new Date(
-          date
-        ).toDateString()}:`;
+        scheduleHeader.className =
+          "text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4";
+        scheduleHeader.textContent = `Available Times on ${day.charAt(
+          0
+        )}. ${day.slice(1)}:`;
         scheduleContent.appendChild(scheduleHeader);
 
         if (times && times.length > 0) {
-          const timeListContainer = document.createElement("div");
-          timeListContainer.className = "max-h-24 overflow-y-auto"; // Limit to show only 2 items (approx)
+          // Create the container for times and back button
+          const timesContainer = document.createElement("div");
+          timesContainer.className = "times-container";
 
-          const timeList = document.createElement("div");
-          timeList.className = "space-y-2";
-
-          times.forEach((time) => {
-            const timeItem = document.createElement("div");
-            timeItem.className =
-              "px-4 py-2 bg-indigo-50 rounded-md text-gray-700";
-            timeItem.textContent = time;
-            timeList.appendChild(timeItem);
+          // First Row: Up to 3 time buttons
+          const firstRowTimes = times.slice(0, 3);
+          firstRowTimes.forEach((time) => {
+            const timeButton = document.createElement("button");
+            timeButton.className = "times-button";
+            timeButton.textContent = time;
+            timeButton.addEventListener("click", () => {
+              selectedTime = time;
+              alert(
+                `You have selected ${
+                  day.charAt(0).toUpperCase() + day.slice(1)
+                } at ${selectedTime} with Dr. ${doctorId
+                  .replace("dr_", "")
+                  .replace("_", " ")
+                  .toUpperCase()}.\n\nThis feature is currently under development.`
+              );
+            });
+            timesContainer.appendChild(timeButton);
           });
 
-          timeListContainer.appendChild(timeList);
-          scheduleContent.appendChild(timeListContainer);
+          // Second Row: Up to 2 time buttons
+          const secondRowTimes = times.slice(3, 5);
+          secondRowTimes.forEach((time) => {
+            const timeButton = document.createElement("button");
+            timeButton.className = "times-button";
+            timeButton.textContent = time;
+            timeButton.addEventListener("click", () => {
+              selectedTime = time;
+              alert(
+                `You have selected ${
+                  day.charAt(0).toUpperCase() + day.slice(1)
+                } at ${selectedTime} with Dr. ${doctorId
+                  .replace("dr_", "")
+                  .replace("_", " ")
+                  .toUpperCase()}.\n\nThis feature is currently under development.`
+              );
+            });
+            timesContainer.appendChild(timeButton);
+          });
+
+          // Create Back Button
+          const backButton = document.createElement("button");
+          backButton.className = "back-button";
+          backButton.textContent = "Back to Days";
+          backButton.addEventListener("click", () => {
+            displayDatePicker(doctorId);
+          });
+
+          // Determine placement of Back Button based on number of secondRowTimes
+          if (secondRowTimes.length === 2) {
+            // Place Back Button in the third column (span 1 column)
+            backButton.classList.add("back-col-1");
+          } else if (secondRowTimes.length === 1) {
+            // Place Back Button spanning 2 columns
+            backButton.classList.add("back-col-2");
+          } else if (secondRowTimes.length === 0) {
+            // Place Back Button spanning all 3 columns
+            backButton.classList.add("back-col-3");
+          }
+
+          timesContainer.appendChild(backButton);
+          scheduleContent.appendChild(timesContainer);
         } else {
-          const noTimesMessage = document.createElement("p");
-          noTimesMessage.className = "text-gray-700";
-          noTimesMessage.textContent =
-            "No available times on this date. Please select another date.";
-          scheduleContent.appendChild(noTimesMessage);
+          scheduleContent.innerHTML +=
+            '<p class="text-gray-700 dark:text-gray-300">No available times on this day. Please select another day.</p>';
+          console.log("No available times on this day.");
         }
-
-        // Back Button to go back to date picker
-        const backButton = document.createElement("button");
-        backButton.className =
-          "mt-4 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md";
-        backButton.textContent = "Back to Date Picker";
-        backButton.addEventListener("click", () => {
-          displayDatePicker(doctorId);
-        });
-
-        scheduleContent.appendChild(backButton);
 
         scheduleDiv.appendChild(scheduleContent);
       }
@@ -319,6 +705,8 @@
       document.getElementById("doctor").addEventListener("change", function () {
         selectedDoctor = this.value;
         selectedDate = "";
+        selectedTime = "";
+        console.log(`Doctor selected: ${selectedDoctor}`);
         displayDatePicker(selectedDoctor);
       });
 
@@ -331,17 +719,34 @@
 
       recognition.onresult = (event) => {
         const voiceCommand = event.results[0][0].transcript;
+        console.log(`Voice command received: ${voiceCommand}`);
         document.getElementById("commandInput").value = voiceCommand;
         submitCommand(); // Auto-submit after receiving voice command
       };
 
       document.getElementById("micBtn").addEventListener("click", function () {
-        recognition.start();
-        document.getElementById("micBtn").classList.add("recording");
+        if (this.classList.contains("recording")) {
+          // If already recording, stop recording
+          recognition.stop();
+          this.classList.remove("recording");
+          this.querySelector(".tooltip").textContent = "Start Voice Command";
+          console.log("Recording stopped.");
+        } else {
+          // Start recording
+          console.log("Mic button clicked. Starting voice recognition...");
+          recognition.start();
+          this.classList.add("recording");
+          this.querySelector(".tooltip").textContent = "Stop Recording";
+          console.log("Recording started.");
+        }
       });
 
       recognition.onend = () => {
+        console.log("Voice recognition ended.");
         document.getElementById("micBtn").classList.remove("recording");
+        document
+          .getElementById("micBtn")
+          .querySelector(".tooltip").textContent = "Start Voice Command";
       };
 
       // Submit button handler
@@ -349,32 +754,57 @@
         .getElementById("submitBtn")
         .addEventListener("click", submitCommand);
 
+      // Add event listener to detect "Enter" key press in the input field
+      document
+        .getElementById("commandInput")
+        .addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            submitCommand();
+          }
+        });
+
       async function submitCommand() {
         const command = document.getElementById("commandInput").value;
+        console.log(`Submitting command: ${command}`);
 
         if (command.trim() === "") {
           alert("Please enter a command.");
           return;
         }
 
-        // Display user's command and robot's response
+        // Display user's command and bot's loading animation
         displayLastInteraction(command, "Thinking...");
 
-        // Send command to Flask backend
-        const response = await fetch("http://127.0.0.1:5000/command", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ text: command }),
-        });
+        try {
+          // Send command to Flask backend
+          const response = await fetch("http://127.0.0.1:5000/command", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ text: command }),
+          });
 
-        const data = await response.json();
-        // Handle the response data as needed
-        console.log(data.response);
+          console.log(`Backend response status: ${response.status}`);
+          if (!response.ok) {
+            throw new Error(`Backend responded with status ${response.status}`);
+          }
 
-        // Update robot's response in the last interaction area
-        displayLastInteraction(command, data.response);
+          const data = await response.json();
+          console.log("Backend response data:", data.response);
+
+          // Update robot's response in the last interaction area
+          displayLastInteraction(command, data.response);
+        } catch (error) {
+          console.error("Error submitting command:", error);
+          displayLastInteraction(
+            command,
+            "Sorry, there was an error processing your command."
+          );
+        } finally {
+          // Hide loader after processing (if using global loader)
+          // document.getElementById("loader").classList.add("hidden"); // Not needed now
+        }
 
         // Clear the input field
         document.getElementById("commandInput").value = "";
@@ -382,6 +812,9 @@
 
       // Function to display the last command and response
       function displayLastInteraction(userCommand, botResponse) {
+        console.log(
+          `Displaying interaction - User: ${userCommand}, Bot: ${botResponse}`
+        );
         const lastInteractionDiv = document.getElementById("lastInteraction");
         lastInteractionDiv.innerHTML = ""; // Clear previous interaction
 
@@ -390,24 +823,41 @@
 
         // User Command
         const userMessageBubble = document.createElement("div");
-        userMessageBubble.className = "flex items-start mb-4 justify-end";
+        userMessageBubble.className = "flex items-start mb-3 justify-end";
 
         const userBubbleContent = document.createElement("div");
         userBubbleContent.className =
-          "max-w-xs px-4 py-2 rounded-lg shadow bg-indigo-500 text-white rounded-br-none";
+          "max-w-xs px-4 py-2 rounded-lg shadow bg-indigo-500 text-white rounded-br-none text-sm";
         userBubbleContent.textContent = userCommand;
 
         userMessageBubble.appendChild(userBubbleContent);
         interactionContent.appendChild(userMessageBubble);
 
-        // Robot Response
+        // Bot Response
         const botMessageBubble = document.createElement("div");
-        botMessageBubble.className = "flex items-start mb-4 justify-start";
+        botMessageBubble.className = "flex items-start mb-3 justify-start";
 
         const botBubbleContent = document.createElement("div");
         botBubbleContent.className =
-          "max-w-xs px-4 py-2 rounded-lg shadow bg-gray-200 text-gray-800 rounded-bl-none";
-        botBubbleContent.textContent = botResponse;
+          "max-w-xs px-4 py-2 rounded-lg shadow bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-none text-sm";
+
+        if (botResponse === "Thinking...") {
+          // Insert Music Waves Animation
+          const musicWave = document.createElement("div");
+          musicWave.className = "music-wave";
+
+          for (let i = 0; i < 3; i++) {
+            // Create 3 bars
+            const bar = document.createElement("div");
+            bar.className = "bar";
+            musicWave.appendChild(bar);
+          }
+
+          botBubbleContent.appendChild(musicWave);
+        } else {
+          // Insert Actual Response Text
+          botBubbleContent.textContent = botResponse;
+        }
 
         botMessageBubble.appendChild(botBubbleContent);
         interactionContent.appendChild(botMessageBubble);
@@ -417,10 +867,12 @@
 
       // Function to check for prompts from the backend
       function checkForPrompt() {
+        console.log("Checking for prompts from backend...");
         fetch("http://127.0.0.1:5000/get_prompt")
           .then((response) => response.json())
           .then((data) => {
             if (data.prompt) {
+              console.log("Received prompt from backend:", data.prompt);
               // Display the prompt to the user
               displayPrompt(data.prompt);
             }
@@ -428,13 +880,15 @@
           .catch((error) => console.error("Error checking for prompt:", error));
       }
 
-      // Call checkForPrompt every 2 seconds
-      setInterval(checkForPrompt, 2000);
+      // Call checkForPrompt every 5 seconds
+      setInterval(checkForPrompt, 5000);
 
-      // Simplified displayPrompt function
+      // Function to display prompt in a modal
       function displayPrompt(promptMessage) {
+        console.log(`Displaying prompt: ${promptMessage}`);
         // Check if the prompt is already displayed
         if (document.getElementById("promptModal")) {
+          console.log("Prompt modal already displayed.");
           return;
         }
 
@@ -442,15 +896,16 @@
         const modal = document.createElement("div");
         modal.id = "promptModal";
         modal.className =
-          "fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center";
+          "fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50";
 
         // Create modal content
         const content = document.createElement("div");
         content.className =
-          "bg-white rounded-lg w-11/12 md:w-1/3 mx-auto p-6 text-center";
+          "bg-white dark:bg-gray-800 rounded-lg w-11/12 md:w-1/3 mx-auto p-4 text-center";
 
         const message = document.createElement("p");
-        message.className = "text-gray-800 text-lg mb-6";
+        message.className =
+          "text-gray-800 dark:text-gray-200 text-sm mb-4";
         message.textContent =
           promptMessage +
           ". Are you done or do you want to go to another place?";
@@ -459,12 +914,13 @@
 
         // Create buttons container
         const buttonsContainer = document.createElement("div");
-        buttonsContainer.className = "flex justify-center space-x-4";
+        buttonsContainer.className =
+          "flex justify-center space-x-2";
 
         // Create buttons
         const doneButton = document.createElement("button");
         doneButton.className =
-          "px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md";
+          "px-3 py-1 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-xs";
         doneButton.textContent = "Done";
         doneButton.addEventListener("click", () => {
           sendUserChoice("user_choice_done");
@@ -473,7 +929,7 @@
 
         const goAnotherButton = document.createElement("button");
         goAnotherButton.className =
-          "px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-md";
+          "px-3 py-1 bg-gray-300 hover:bg-gray-400 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 rounded-md text-xs";
         goAnotherButton.textContent = "Go Another";
         goAnotherButton.addEventListener("click", () => {
           sendUserChoice("user_choice_go_another");
@@ -492,7 +948,9 @@
         document.body.appendChild(modal);
       }
 
+      // Function to send user choice to backend
       function sendUserChoice(choice) {
+        console.log(`Sending user choice: ${choice}`);
         fetch("http://127.0.0.1:5000/post_choice", {
           method: "POST",
           headers: {
@@ -504,13 +962,37 @@
           .then((data) => {
             if (data.status !== "success") {
               console.error("Error sending user choice:", data.message);
+            } else {
+              console.log("User choice sent successfully.");
             }
           })
           .catch((error) => console.error("Error sending user choice:", error));
       }
 
-      // Initialize with a prompt to select a doctor
-      // displayDatePicker("");
+      // Close modal on Esc key press
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          const modal = document.getElementById("promptModal");
+          if (modal) {
+            document.body.removeChild(modal);
+          }
+        }
+      });
+
+      // Respect User's Reduced Motion Preferences
+      const prefersReducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+      ).matches;
+
+      if (prefersReducedMotion) {
+        // Stop the animation
+        const animation = lottie.getRegisteredAnimations()[0];
+        if (animation) {
+          animation.stop();
+        }
+        // Optionally hide the animation container
+        document.getElementById("lottie-container").style.display = "none";
+      }
     </script>
   </body>
 </html>
