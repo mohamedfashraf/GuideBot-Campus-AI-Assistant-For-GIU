@@ -76,7 +76,7 @@
         width: 100%;
         padding-right: 3rem; /* Adequate padding to accommodate the arrow */
         height: 2.5rem; /* Ensures proper size for smaller screens */
-        border-radius: 0.375rem;
+        border-radius: 0.375rem; /* Changed from default to match Tailwind's rounded-md */
         font-size: 0.875rem; /* text-sm */
         line-height: 1.25rem; /* Ensures vertical alignment */
         border: 1px solid #d1d5db; /* Tailwind's gray-300 */
@@ -159,7 +159,7 @@
         background-color: #818cf8; /* Tailwind's indigo-300 */
         color: white;
         border: none;
-        border-radius: 0.375rem;
+        border-radius: 0.375rem; /* Changed to rounded-md */
         cursor: pointer;
         transition: background-color 0.3s;
         height: 2rem; /* Consistent height */
@@ -179,7 +179,7 @@
         background-color: #4f46e5; /* Tailwind's indigo-600 */
         color: white;
         border: none;
-        border-radius: 0.375rem;
+        border-radius: 0.375rem; /* Changed to rounded-md */
         cursor: pointer;
         transition: background-color 0.3s;
         height: 2rem; /* Consistent height */
@@ -276,7 +276,7 @@
     <!-- Main Content Area -->
     <div class="flex-grow overflow-auto px-4 pb-48 md:pb-40 lg:pb-48">
       <!-- Doctor Selection -->
-      <div class="dropdown-section text-center mt-6">
+      <div class="dropdown-section text-center mt-4"> <!-- Adjusted mt-6 to mt-4 -->
         <div
           class="w-full max-w-sm mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 fade-in-up custom-select"
         >
@@ -312,13 +312,15 @@
     <!-- Command Input Section -->
     <div class="input-section w-full">
       <div class="input-wrapper mx-auto w-full max-w-md mb-4">
+        <!-- Changed 'rounded-full' to 'rounded-md' for consistent styling -->
         <div
-          class="flex items-center justify-center bg-white dark:bg-gray-800 rounded-full px-3 py-2 shadow-lg mx-4"
+          class="flex items-center justify-center bg-white dark:bg-gray-800 rounded-md px-3 py-2 shadow-lg mx-4"
         >
           <!-- Mic Button -->
+          <!-- Changed 'rounded-full' to 'rounded-md' and adjusted sizing if needed -->
           <button
             id="micBtn"
-            class="mic-btn flex items-center justify-center bg-gradient-to-br from-indigo-500 to-indigo-600 text-white w-10 h-10 rounded-full mr-2 shadow-xl transition duration-200"
+            class="mic-btn flex items-center justify-center bg-gradient-to-br from-indigo-500 to-indigo-600 text-white w-10 h-10 rounded-md mr-2 shadow-xl transition duration-200"
             aria-label="Start Voice Command"
           >
             <!-- Use Font Awesome Microphone Icon -->
@@ -326,18 +328,20 @@
           </button>
 
           <!-- Input Field -->
+          <!-- Changed 'rounded-full' to 'rounded-md' -->
           <input
             type="text"
             id="commandInput"
             placeholder="Speak or type commands..."
-            class="flex-grow px-3 py-1.5 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 text-sm"
+            class="flex-grow px-3 py-1.5 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 text-sm"
             aria-label="Command Input"
           />
 
           <!-- Submit Button -->
+          <!-- Changed 'rounded-full' to 'rounded-md' -->
           <button
             id="submitBtn"
-            class="submit-btn flex items-center justify-center bg-gradient-to-br from-indigo-500 to-indigo-600 text-white w-10 h-10 rounded-full ml-2 shadow-xl transition duration-200"
+            class="submit-btn flex items-center justify-center bg-gradient-to-br from-indigo-500 to-indigo-600 text-white w-10 h-10 rounded-md ml-2 shadow-xl transition duration-200"
             aria-label="Submit Command"
           >
             <!-- Send Icon -->

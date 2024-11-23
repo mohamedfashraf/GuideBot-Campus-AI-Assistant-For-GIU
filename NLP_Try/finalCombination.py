@@ -18,6 +18,10 @@ import webbrowser
 from threading import Lock
 from datetime import datetime
 import re  # Import regex module for pattern matching
+from functools import lru_cache  # Import lru_cache for caching
+from concurrent.futures import (
+    ThreadPoolExecutor,
+)  # Import ThreadPoolExecutor for asynchronous processing
 
 # Initialize thread-safe queues for inter-thread communication
 command_queue = queue.Queue()
@@ -66,9 +70,9 @@ BAUD_RATE = 115200  # Baud rate matching Arduino's settings
 
 # -------------------- Logging Configuration ---------------------#
 
-# Configure the logging module to display INFO level logs and above
+# Configure the logging module to display DEBUG level logs and above
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),  # Log output to the console
@@ -83,8 +87,8 @@ logger = logging.getLogger(__name__)
 # Initialize the zero-shot classification pipeline using a pre-trained model
 nlp = pipeline(
     "zero-shot-classification",
-    model="valhalla/distilbart-mnli-12-1",
-    tokenizer="valhalla/distilbart-mnli-12-1",
+    model="microsoft/deberta-base-mnli",  # Switched to a more efficient model
+    tokenizer="microsoft/deberta-base-mnli",
     framework="pt",  # Use PyTorch framework
     device=-1,  # Use CPU (set to a GPU device index if available)
 )
@@ -297,8 +301,34 @@ pending_action = None
 pending_action_lock = Lock()
 pending_room = None  # Store the room for which we are asking the day
 
-# Configure logging to DEBUG level for more detailed logs
-logging.basicConfig(level=logging.DEBUG)
+# Initialize ThreadPoolExecutor for asynchronous NLP processing
+executor = ThreadPoolExecutor(max_workers=4)  # Adjust based on CPU cores
+
+
+@lru_cache(maxsize=128)
+def classify_command_cached(command_text):
+    """
+    Classify the command using zero-shot classification with caching.
+
+    Args:
+        command_text (str): The user's input command.
+
+    Returns:
+        str: The highest confidence label or 'none' if no label meets the threshold.
+    """
+    result = nlp(
+        command_text,
+        candidate_labels=tuple(labels),  # Convert to tuple for hashing
+        hypothesis_template="This text is about {}.",
+        multi_label=True,
+    )
+    confidence_threshold = 0.3  # Adjust as needed
+    matched_labels = [
+        label
+        for label, score in zip(result["labels"], result["scores"])
+        if score > confidence_threshold
+    ]
+    return matched_labels[0] if matched_labels else "none"
 
 
 def is_affirmative(response):
@@ -989,32 +1019,13 @@ def handle_command():
             # Pass the original command text to open_application for processing
             return open_application(command_text, command_text)
 
-        # Define a hypothesis template for zero-shot classification
-        hypothesis_template = "This text is about {}."
+        # Submit the classification task to executor
+        future = executor.submit(classify_command_cached, command_text)
+        predicted_label = future.result()
 
-        # Perform zero-shot classification on the command text
-        result = nlp(
-            command_text,
-            candidate_labels=labels,
-            hypothesis_template=hypothesis_template,
-            multi_label=True,  # Allow multiple labels to be assigned
-        )
+        logger.info(f"Matched label: {predicted_label}")
 
-        logger.debug(f"Model result: {result}")
-
-        # Process labels that exceed the confidence threshold
-        confidence_threshold = 0.3  # Adjust as needed
-        matched_labels = [
-            label
-            for label, score in zip(result["labels"], result["scores"])
-            if score > confidence_threshold
-        ]
-
-        logger.info(f"Matched labels: {matched_labels}")
-
-        if matched_labels:
-            # Use the highest confidence label
-            predicted_label = matched_labels[0]
+        if predicted_label != "none":
             return open_application(predicted_label, command_text)
         else:
             # If no label matched with high confidence, treat the original text
