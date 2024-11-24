@@ -272,7 +272,12 @@
         bottom: 100%; /* Position above the button */
         left: 50%;
         transform: translateX(-50%);
-        background-color: rgba(31, 41, 55, 0.9); /* Tailwind's gray-800 with opacity */
+        background-color: rgba(
+          31,
+          41,
+          55,
+          0.9
+        ); /* Tailwind's gray-800 with opacity */
         color: white;
         padding: 0.25rem 0.5rem;
         border-radius: 0.375rem; /* Tailwind's rounded-md */
@@ -322,7 +327,9 @@
 
       /* Subtle Transition for Input Field */
       #commandInput {
-        transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        transition:
+          border-color 0.2s ease-in-out,
+          box-shadow 0.2s ease-in-out;
       }
 
       /* Suggestions Container Styling */
@@ -339,13 +346,15 @@
       .suggestion-text {
         font-size: 0.875rem; /* text-sm */
         color: #374151; /* Tailwind's gray-700 */
-        dark:text-gray-300;
+        dark: text-gray-300;
         flex-grow: 1;
         text-align: center;
         cursor: pointer;
         padding: 0.25rem 0.5rem;
         border-radius: 0.375rem; /* Tailwind's rounded-md */
-        transition: background-color 0.2s, color 0.2s;
+        transition:
+          background-color 0.2s,
+          color 0.2s;
       }
 
       .suggestion-text:hover {
@@ -502,7 +511,10 @@
 
     <!-- Loading Spinner -->
     <div id="loader" class="flex justify-center items-center hidden">
-      <div class="spinner-border animate-spin inline-block w-8 h-8 border-4 rounded-full" role="status">
+      <div
+        class="spinner-border animate-spin inline-block w-8 h-8 border-4 rounded-full"
+        role="status"
+      >
         <span class="visually-hidden">Loading...</span>
       </div>
     </div>
@@ -832,23 +844,58 @@
 
       let currentSuggestionIndex = 0;
 
+      // Variable to hold the shuffle interval ID
+      let shuffleIntervalId = null;
+
       // Function to display current suggestion
       function updateSuggestionDisplay() {
         const suggestionText = document.getElementById("currentSuggestion");
         suggestionText.textContent = suggestions[currentSuggestionIndex];
       }
 
-      // Event listeners for arrow buttons
-      document.getElementById("prevSuggestion").addEventListener("click", () => {
-        currentSuggestionIndex =
-          (currentSuggestionIndex - 1 + suggestions.length) % suggestions.length;
-        updateSuggestionDisplay();
-      });
+      // Function to shuffle suggestions every 2 seconds
+      function startShufflingSuggestions() {
+        // Prevent multiple intervals
+        if (shuffleIntervalId) return;
 
-      document.getElementById("nextSuggestion").addEventListener("click", () => {
-        currentSuggestionIndex = (currentSuggestionIndex + 1) % suggestions.length;
-        updateSuggestionDisplay();
-      });
+        shuffleIntervalId = setInterval(() => {
+          currentSuggestionIndex =
+            (currentSuggestionIndex + 1) % suggestions.length;
+          updateSuggestionDisplay();
+        }, 2000); // 2000 milliseconds = 2 seconds
+      }
+
+      // Function to stop shuffling suggestions
+      function stopShufflingSuggestions() {
+        if (shuffleIntervalId) {
+          clearInterval(shuffleIntervalId);
+          shuffleIntervalId = null;
+        }
+      }
+
+      // Event listeners for arrow buttons
+      document
+        .getElementById("prevSuggestion")
+        .addEventListener("click", () => {
+          currentSuggestionIndex =
+            (currentSuggestionIndex - 1 + suggestions.length) %
+            suggestions.length;
+          updateSuggestionDisplay();
+          // Reset the shuffle timer
+          stopShufflingSuggestions();
+          startShufflingSuggestions();
+        });
+
+      document
+        .getElementById("nextSuggestion")
+        .addEventListener("click", () => {
+          currentSuggestionIndex =
+            (currentSuggestionIndex + 1) % suggestions.length;
+          updateSuggestionDisplay();
+          // Reset the shuffle timer
+          stopShufflingSuggestions();
+          startShufflingSuggestions();
+        });
 
       // Function to handle suggestion click
       function handleSuggestionClick() {
@@ -872,13 +919,13 @@
       // Function to reset inactivity timer for suggestions
       function resetInactivityTimerSuggestions() {
         clearTimeout(inactivityTimerSuggestions);
-        inactivityTimerSuggestions = setTimeout(showSuggestions, 120000); // 2 minutes
+        inactivityTimerSuggestions = setTimeout(showSuggestions, 60000);
       }
 
       // Function to reset inactivity timer for clearing chat
       function resetInactivityTimerClearChat() {
         clearTimeout(inactivityTimerClearChat);
-        inactivityTimerClearChat = setTimeout(clearChatView, 120000); // 2 minutes
+        inactivityTimerClearChat = setTimeout(clearChatView, 60000);
       }
 
       // Function to show suggestions
@@ -887,6 +934,7 @@
         if (!suggestionsDiv.classList.contains("hidden")) return; // Already visible
         suggestionsDiv.classList.remove("hidden");
         updateSuggestionDisplay();
+        startShufflingSuggestions(); // Start automatic shuffling
       }
 
       // Function to hide suggestions
@@ -894,6 +942,7 @@
         const suggestionsDiv = document.getElementById("suggestions");
         if (suggestionsDiv.classList.contains("hidden")) return; // Already hidden
         suggestionsDiv.classList.add("hidden");
+        stopShufflingSuggestions(); // Stop automatic shuffling
       }
 
       // Function to clear the chat view
