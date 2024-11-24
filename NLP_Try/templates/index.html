@@ -325,10 +325,55 @@
         transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
       }
 
+      /* Suggestions Container Styling */
+      .suggestions-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        /* Removed background-color for transparency */
+        padding: 0.5rem 1rem;
+        gap: 1rem;
+        animation: fadeInUp 0.5s ease-out forwards;
+      }
+
+      .suggestion-text {
+        font-size: 0.875rem; /* text-sm */
+        color: #374151; /* Tailwind's gray-700 */
+        dark:text-gray-300;
+        flex-grow: 1;
+        text-align: center;
+        cursor: pointer;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.375rem; /* Tailwind's rounded-md */
+        transition: background-color 0.2s, color 0.2s;
+      }
+
+      .suggestion-text:hover {
+        background-color: #e0e7ff; /* Tailwind's indigo-100 */
+        color: #4338ca; /* Tailwind's indigo-700 */
+      }
+
+      .arrow-button {
+        background-color: transparent;
+        border: none;
+        color: #4f46e5; /* Tailwind's indigo-600 */
+        cursor: pointer;
+        font-size: 1rem;
+        transition: color 0.2s;
+      }
+
+      .arrow-button:hover {
+        color: #4338ca; /* Tailwind's indigo-700 */
+      }
+
       /* Responsive Adjustments */
       @media (max-width: 640px) {
         .input-wrapper {
           padding: 0 1rem;
+        }
+
+        .suggestion-text {
+          font-size: 0.75rem; /* text-xs */
         }
       }
     </style>
@@ -389,6 +434,33 @@
     <!-- Command Input Section -->
     <div class="input-section w-full">
       <div class="input-wrapper mx-auto w-full max-w-md mb-4">
+        <!-- Suggestions will appear directly above the input box -->
+        <div
+          id="suggestions"
+          class="suggestions-section hidden mb-2"
+          aria-live="polite"
+          aria-label="Suggested Commands"
+        >
+          <div class="suggestions-container">
+            <button
+              id="prevSuggestion"
+              class="arrow-button"
+              aria-label="Previous Suggestion"
+            >
+              <i class="fas fa-arrow-left"></i>
+            </button>
+            <div class="suggestion-text" id="currentSuggestion">
+              <!-- Current suggestion will be injected here -->
+            </div>
+            <button
+              id="nextSuggestion"
+              class="arrow-button"
+              aria-label="Next Suggestion"
+            >
+              <i class="fas fa-arrow-right"></i>
+            </button>
+          </div>
+        </div>
         <div
           class="flex items-center justify-center bg-white dark:bg-gray-800 rounded-md px-3 py-2 shadow-lg mx-4 h-12"
         >
@@ -749,6 +821,107 @@
           .querySelector(".tooltip").textContent = "Start Voice Command";
       };
 
+      // Suggestions Feature Implementation
+
+      // Suggestions Array
+      const suggestions = [
+        "Take me to admission",
+        "Hey",
+        "I want to apply for the next semester",
+      ];
+
+      let currentSuggestionIndex = 0;
+
+      // Function to display current suggestion
+      function updateSuggestionDisplay() {
+        const suggestionText = document.getElementById("currentSuggestion");
+        suggestionText.textContent = suggestions[currentSuggestionIndex];
+      }
+
+      // Event listeners for arrow buttons
+      document.getElementById("prevSuggestion").addEventListener("click", () => {
+        currentSuggestionIndex =
+          (currentSuggestionIndex - 1 + suggestions.length) % suggestions.length;
+        updateSuggestionDisplay();
+      });
+
+      document.getElementById("nextSuggestion").addEventListener("click", () => {
+        currentSuggestionIndex = (currentSuggestionIndex + 1) % suggestions.length;
+        updateSuggestionDisplay();
+      });
+
+      // Function to handle suggestion click
+      function handleSuggestionClick() {
+        const selectedSuggestion = suggestions[currentSuggestionIndex];
+        document.getElementById("commandInput").value = selectedSuggestion;
+        submitCommand();
+        hideSuggestions();
+        resetInactivityTimerSuggestions(); // Restart the timer
+        resetInactivityTimerClearChat(); // Restart the chat clear timer
+      }
+
+      // Add click event to suggestion text
+      document
+        .getElementById("currentSuggestion")
+        .addEventListener("click", handleSuggestionClick);
+
+      // Inactivity Timer Variables
+      let inactivityTimerSuggestions;
+      let inactivityTimerClearChat;
+
+      // Function to reset inactivity timer for suggestions
+      function resetInactivityTimerSuggestions() {
+        clearTimeout(inactivityTimerSuggestions);
+        inactivityTimerSuggestions = setTimeout(showSuggestions, 120000); // 2 minutes
+      }
+
+      // Function to reset inactivity timer for clearing chat
+      function resetInactivityTimerClearChat() {
+        clearTimeout(inactivityTimerClearChat);
+        inactivityTimerClearChat = setTimeout(clearChatView, 120000); // 2 minutes
+      }
+
+      // Function to show suggestions
+      function showSuggestions() {
+        const suggestionsDiv = document.getElementById("suggestions");
+        if (!suggestionsDiv.classList.contains("hidden")) return; // Already visible
+        suggestionsDiv.classList.remove("hidden");
+        updateSuggestionDisplay();
+      }
+
+      // Function to hide suggestions
+      function hideSuggestions() {
+        const suggestionsDiv = document.getElementById("suggestions");
+        if (suggestionsDiv.classList.contains("hidden")) return; // Already hidden
+        suggestionsDiv.classList.add("hidden");
+      }
+
+      // Function to clear the chat view
+      function clearChatView() {
+        const lastInteractionDiv = document.getElementById("lastInteraction");
+        lastInteractionDiv.innerHTML = ""; // Clear all interactions
+        console.log("Chat view cleared due to inactivity.");
+      }
+
+      // Initialize suggestions on page load
+      window.onload = () => {
+        // Initialize Suggestions
+        updateSuggestionDisplay();
+        showSuggestions();
+        resetInactivityTimerSuggestions();
+        resetInactivityTimerClearChat();
+      };
+
+      // Reset inactivity timers on user activity
+      function resetInactivityTimers() {
+        resetInactivityTimerSuggestions();
+        resetInactivityTimerClearChat();
+      }
+
+      document.addEventListener("mousemove", resetInactivityTimers);
+      document.addEventListener("keydown", resetInactivityTimers);
+      document.addEventListener("click", resetInactivityTimers);
+
       // Submit button handler
       document
         .getElementById("submitBtn")
@@ -763,6 +936,7 @@
           }
         });
 
+      // Function to submit command
       async function submitCommand() {
         const command = document.getElementById("commandInput").value;
         console.log(`Submitting command: ${command}`);
@@ -771,6 +945,9 @@
           alert("Please enter a command.");
           return;
         }
+
+        // Hide suggestions when a command is submitted
+        hideSuggestions();
 
         // Display user's command and bot's loading animation
         displayLastInteraction(command, "Thinking...");
@@ -808,6 +985,10 @@
 
         // Clear the input field
         document.getElementById("commandInput").value = "";
+
+        // Reset inactivity timers after command submission
+        resetInactivityTimerSuggestions();
+        resetInactivityTimerClearChat();
       }
 
       // Function to display the last command and response
@@ -863,135 +1044,6 @@
         interactionContent.appendChild(botMessageBubble);
 
         lastInteractionDiv.appendChild(interactionContent);
-      }
-
-      // Function to check for prompts from the backend
-      function checkForPrompt() {
-        console.log("Checking for prompts from backend...");
-        fetch("http://127.0.0.1:5000/get_prompt")
-          .then((response) => response.json())
-          .then((data) => {
-            if (data.prompt) {
-              console.log("Received prompt from backend:", data.prompt);
-              // Display the prompt to the user
-              displayPrompt(data.prompt);
-            }
-          })
-          .catch((error) => console.error("Error checking for prompt:", error));
-      }
-
-      // Call checkForPrompt every 5 seconds
-      setInterval(checkForPrompt, 5000);
-
-      // Function to display prompt in a modal
-      function displayPrompt(promptMessage) {
-        console.log(`Displaying prompt: ${promptMessage}`);
-        // Check if the prompt is already displayed
-        if (document.getElementById("promptModal")) {
-          console.log("Prompt modal already displayed.");
-          return;
-        }
-
-        // Create modal overlay
-        const modal = document.createElement("div");
-        modal.id = "promptModal";
-        modal.className =
-          "fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50";
-
-        // Create modal content
-        const content = document.createElement("div");
-        content.className =
-          "bg-white dark:bg-gray-800 rounded-lg w-11/12 md:w-1/3 mx-auto p-4 text-center";
-
-        const message = document.createElement("p");
-        message.className =
-          "text-gray-800 dark:text-gray-200 text-sm mb-4";
-        message.textContent =
-          promptMessage +
-          ". Are you done or do you want to go to another place?";
-
-        content.appendChild(message);
-
-        // Create buttons container
-        const buttonsContainer = document.createElement("div");
-        buttonsContainer.className =
-          "flex justify-center space-x-2";
-
-        // Create buttons
-        const doneButton = document.createElement("button");
-        doneButton.className =
-          "px-3 py-1 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-xs";
-        doneButton.textContent = "Done";
-        doneButton.addEventListener("click", () => {
-          sendUserChoice("user_choice_done");
-          document.body.removeChild(modal);
-        });
-
-        const goAnotherButton = document.createElement("button");
-        goAnotherButton.className =
-          "px-3 py-1 bg-gray-300 hover:bg-gray-400 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 rounded-md text-xs";
-        goAnotherButton.textContent = "Go Another";
-        goAnotherButton.addEventListener("click", () => {
-          sendUserChoice("user_choice_go_another");
-          document.body.removeChild(modal);
-        });
-
-        buttonsContainer.appendChild(doneButton);
-        buttonsContainer.appendChild(goAnotherButton);
-
-        content.appendChild(buttonsContainer);
-
-        // Append content to modal
-        modal.appendChild(content);
-
-        // Append modal to body
-        document.body.appendChild(modal);
-      }
-
-      // Function to send user choice to backend
-      function sendUserChoice(choice) {
-        console.log(`Sending user choice: ${choice}`);
-        fetch("http://127.0.0.1:5000/post_choice", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ choice: choice }),
-        })
-          .then((response) => response.json())
-          .then((data) => {
-            if (data.status !== "success") {
-              console.error("Error sending user choice:", data.message);
-            } else {
-              console.log("User choice sent successfully.");
-            }
-          })
-          .catch((error) => console.error("Error sending user choice:", error));
-      }
-
-      // Close modal on Esc key press
-      document.addEventListener("keydown", function (event) {
-        if (event.key === "Escape") {
-          const modal = document.getElementById("promptModal");
-          if (modal) {
-            document.body.removeChild(modal);
-          }
-        }
-      });
-
-      // Respect User's Reduced Motion Preferences
-      const prefersReducedMotion = window.matchMedia(
-        "(prefers-reduced-motion: reduce)"
-      ).matches;
-
-      if (prefersReducedMotion) {
-        // Stop the animation
-        const animation = lottie.getRegisteredAnimations()[0];
-        if (animation) {
-          animation.stop();
-        }
-        // Optionally hide the animation container
-        document.getElementById("lottie-container").style.display = "none";
       }
     </script>
   </body>
