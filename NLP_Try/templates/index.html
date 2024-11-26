@@ -272,7 +272,12 @@
         bottom: 100%; /* Position above the button */
         left: 50%;
         transform: translateX(-50%);
-        background-color: rgba(31, 41, 55, 0.9); /* Tailwind's gray-800 with opacity */
+        background-color: rgba(
+          31,
+          41,
+          55,
+          0.9
+        ); /* Tailwind's gray-800 with opacity */
         color: white;
         padding: 0.25rem 0.5rem;
         border-radius: 0.375rem; /* Tailwind's rounded-md */
@@ -369,6 +374,23 @@
 
       .arrow-button:hover {
         color: #4338ca; /* Tailwind's indigo-700 */
+      }
+
+      /* Blinking Cursor for Typewriter Effect */
+      .typing-cursor {
+        display: inline-block;
+        width: 2px;
+        height: 1em;
+        background-color: currentColor;
+        margin-left: 2px;
+        animation: blink 1s step-start infinite;
+        vertical-align: bottom;
+      }
+
+      @keyframes blink {
+        50% {
+          opacity: 0;
+        }
       }
 
       /* Responsive Adjustments */
@@ -981,7 +1003,32 @@
           }
         });
 
-      // Function to submit command
+      /**
+       * Typewriter effect to display text one character at a time.
+       * @param {HTMLElement} element - The HTML element where the text will appear.
+       * @param {string} text - The full text to display.
+       * @param {number} speed - Delay in milliseconds between each character.
+       */
+      async function typeWriter(element, text, speed = 50) {
+        element.textContent = ""; // Clear any existing text
+
+        // Create and append the cursor
+        const cursor = document.createElement("span");
+        cursor.className = "typing-cursor";
+        element.appendChild(cursor);
+
+        for (let char of text) {
+          element.insertBefore(document.createTextNode(char), cursor);
+          await new Promise((resolve) => setTimeout(resolve, speed));
+        }
+
+        // Remove the cursor after typing is complete
+        element.removeChild(cursor);
+      }
+
+      /**
+       * Function to submit command
+       */
       async function submitCommand() {
         const command = document.getElementById("commandInput").value;
         console.log(`Submitting command: ${command}`);
@@ -1015,7 +1062,7 @@
           const data = await response.json();
           console.log("Backend response data:", data.response);
 
-          // Update robot's response in the last interaction area
+          // Update robot's response in the last interaction area with typewriter effect
           displayLastInteraction(command, data.response);
         } catch (error) {
           console.error("Error submitting command:", error);
@@ -1036,7 +1083,11 @@
         resetInactivityTimerClearChat();
       }
 
-      // Function to display the last command and response
+      /**
+       * Function to display the last command and response
+       * @param {string} userCommand - The command entered by the user
+       * @param {string} botResponse - The response from the bot
+       */
       function displayLastInteraction(userCommand, botResponse) {
         console.log(
           `Displaying interaction - User: ${userCommand}, Bot: ${botResponse}`
@@ -1047,7 +1098,7 @@
         const interactionContent = document.createElement("div");
         interactionContent.className = "fade-in-up";
 
-        // User Command
+        // User Command Bubble
         const userMessageBubble = document.createElement("div");
         userMessageBubble.className = "flex items-start mb-3 justify-end";
 
@@ -1059,7 +1110,7 @@
         userMessageBubble.appendChild(userBubbleContent);
         interactionContent.appendChild(userMessageBubble);
 
-        // Bot Response
+        // Bot Response Bubble
         const botMessageBubble = document.createElement("div");
         botMessageBubble.className = "flex items-start mb-3 justify-start";
 
@@ -1081,8 +1132,8 @@
 
           botBubbleContent.appendChild(musicWave);
         } else {
-          // Insert Actual Response Text
-          botBubbleContent.textContent = botResponse;
+          // Insert Actual Response Text with Typewriter Effect
+          typeWriter(botBubbleContent, botResponse, 75); // Adjust speed as needed
         }
 
         botMessageBubble.appendChild(botBubbleContent);
