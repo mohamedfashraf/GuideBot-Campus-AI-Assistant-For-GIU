@@ -82,7 +82,9 @@
       }
 
       .custom-select select {
-        appearance: none;
+        -webkit-appearance: none; /* Safari and Chrome */
+        -moz-appearance: none; /* Firefox */
+        appearance: none; /* Standard */
         background: none;
         width: 100%;
         padding-right: 3rem; /* Adequate padding to accommodate the arrow */
@@ -94,6 +96,12 @@
         background-color: #ffffff; /* Light mode */
         color: #374151; /* Tailwind's gray-700 */
         box-sizing: border-box; /* Ensure padding is included in width */
+        cursor: pointer;
+      }
+
+      /* Hide the default arrow in IE/Edge */
+      .custom-select select::-ms-expand {
+        display: none;
       }
 
       .custom-select select:focus {
@@ -106,14 +114,12 @@
         content: "";
         position: absolute;
         top: 50%; /* Center the arrow vertically */
-        right: 2.5rem; /* Adjusted to move the arrow slightly left */
-        width: 10px; /* Reduced size for a sleeker look */
-        height: 10px;
-        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"><path d="M2,4 L6,8 L10,4" stroke="%234f46e5" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>');
-        background-repeat: no-repeat;
-        background-position: center;
-        background-size: contain;
-        transform: translateY(-50%);
+        right: 1rem; /* Adjusted to align properly */
+        width: 0.5rem; /* Adjust size as needed */
+        height: 0.5rem;
+        border-left: 2px solid #4f46e5; /* Tailwind's indigo-600 */
+        border-bottom: 2px solid #4f46e5; /* Tailwind's indigo-600 */
+        transform: translateY(-50%) rotate(-45deg);
         pointer-events: none;
       }
 
@@ -186,7 +192,7 @@
 
       /* Back Button Styling */
       .back-button {
-        padding: 0.25rem 0.5rem; /* Reduced padding for smaller buttons */
+        padding: 0.25rem; /* Reduced padding since there's no text */
         background-color: #4f46e5; /* Tailwind's indigo-600 */
         color: white;
         border: none;
@@ -197,7 +203,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.75rem; /* text-xs */
+        font-size: 1rem; /* Adjusted for better visibility */
       }
 
       .back-button:hover {
@@ -272,7 +278,12 @@
         bottom: 100%; /* Position above the button */
         left: 50%;
         transform: translateX(-50%);
-        background-color: rgba(31, 41, 55, 0.9); /* Tailwind's gray-800 with opacity */
+        background-color: rgba(
+          31,
+          41,
+          55,
+          0.9
+        ); /* Tailwind's gray-800 with opacity */
         color: white;
         padding: 0.25rem 0.5rem;
         border-radius: 0.375rem; /* Tailwind's rounded-md */
@@ -426,8 +437,8 @@
       .modal-content {
         background-color: white;
         color: #374151; /* Tailwind's gray-700 */
-        dark:bg-gray-800;
-        dark:text-gray-200;
+        dark: bg-gray-800;
+        dark: text-gray-200;
         padding: 2rem;
         border-radius: 0.375rem; /* Tailwind's rounded-md */
         width: 90%;
@@ -454,7 +465,7 @@
         font-size: 1.25rem;
         cursor: pointer;
         color: #374151; /* Tailwind's gray-700 */
-        dark:text-gray-200;
+        dark: text-gray-200;
       }
 
       .modal-body {
@@ -582,13 +593,13 @@
       <!-- Availability Schedule Section -->
       <div
         id="schedule"
-        class="schedule-section mt-8 mx-auto max-w-sm md:max-w-md px-4"
+        class="schedule-section mt-4 mx-auto max-w-md md:max-w-lg lg:max-w-xl px-2"
       ></div>
 
       <!-- Last Interaction Area -->
       <div
         id="lastInteraction"
-        class="last-interaction-section mt-8 mx-auto max-w-sm md:max-w-md px-4"
+        class="last-interaction-section mt-4 mx-auto max-w-md md:max-w-lg lg:max-w-xl px-2"
       >
         <!-- Last command and response will be displayed here -->
       </div>
@@ -596,7 +607,9 @@
 
     <!-- Command Input Section -->
     <div class="input-section w-full">
-      <div class="input-wrapper mx-auto w-full max-w-md md:max-w-lg lg:max-w-xl mb-4">
+      <div
+        class="input-wrapper mx-auto w-full max-w-md md:max-w-lg lg:max-w-xl mb-4"
+      >
         <!-- Suggestions will appear directly above the input box -->
         <div
           id="suggestions"
@@ -634,7 +647,9 @@
             aria-label="Start Voice Command"
             aria-describedby="micBtnTooltip"
           >
-            <i class="fa-solid fa-microphone text-lg sm:text-xl md:text-2xl"></i>
+            <i
+              class="fa-solid fa-microphone text-lg sm:text-xl md:text-2xl"
+            ></i>
             <!-- Tooltip -->
             <span id="micBtnTooltip" class="tooltip">Start Voice Command</span>
           </button>
@@ -655,7 +670,9 @@
             aria-label="Submit Command"
             aria-describedby="submitBtnTooltip"
           >
-            <i class="fa-solid fa-paper-plane text-lg sm:text-xl md:text-2xl"></i>
+            <i
+              class="fa-solid fa-paper-plane text-lg sm:text-xl md:text-2xl"
+            ></i>
             <!-- Tooltip -->
             <span id="submitBtnTooltip" class="tooltip">Submit Command</span>
           </button>
@@ -708,7 +725,7 @@
             </p>
           </div>
           <div class="guide-item" data-index="1">
-            <i class="fas fa-graduation-cap"></i> <!-- Updated Icon -->
+            <i class="fas fa-graduation-cap"></i>
             <p>
               Select a professor from the dropdown to check their availability.
             </p>
@@ -843,13 +860,14 @@
 
           const scheduleContent = document.createElement("div");
           scheduleContent.className =
-            "w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 fade-in-up";
+            "w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 fade-in-up"; // Changed p-4 to p-2
 
-          const scheduleHeader = document.createElement("h2");
-          scheduleHeader.className =
-            "text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4";
-          scheduleHeader.textContent = "Select a Day:";
-          scheduleContent.appendChild(scheduleHeader);
+          // *** Removed the "Select a Day:" header ***
+          // const scheduleHeader = document.createElement("h2");
+          // scheduleHeader.className =
+          //   "text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4";
+          // scheduleHeader.textContent = "Select a Day:";
+          // scheduleContent.appendChild(scheduleHeader);
 
           // Generate list of available days
           const days = Object.keys(availability);
@@ -906,14 +924,19 @@
 
         const scheduleContent = document.createElement("div");
         scheduleContent.className =
-          "w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 fade-in-up";
+          "w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 fade-in-up"; // Changed p-4 to p-2
+
+        // **Sanitize the day string to remove any non-alphabetic characters**
+        const sanitizedDay = day.replace(/[^a-zA-Z]/g, "");
+        console.log(`Sanitized day: ${sanitizedDay}`);
 
         const scheduleHeader = document.createElement("h2");
         scheduleHeader.className =
           "text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4";
-        scheduleHeader.textContent = `Available Times on ${day.charAt(
-          0
-        )}. ${day.slice(1)}:`;
+        // **Use the sanitized day string in the header**
+        scheduleHeader.textContent = `Available Times on ${
+          sanitizedDay.charAt(0).toUpperCase() + sanitizedDay.slice(1)
+        }:`;
         scheduleContent.appendChild(scheduleHeader);
 
         if (times && times.length > 0) {
@@ -931,7 +954,7 @@
               selectedTime = time;
               alert(
                 `You have selected ${
-                  day.charAt(0).toUpperCase() + day.slice(1)
+                  sanitizedDay.charAt(0).toUpperCase() + sanitizedDay.slice(1)
                 } at ${selectedTime} with Dr. ${doctorId
                   .replace("dr_", "")
                   .replace("_", " ")
@@ -951,7 +974,7 @@
               selectedTime = time;
               alert(
                 `You have selected ${
-                  day.charAt(0).toUpperCase() + day.slice(1)
+                  sanitizedDay.charAt(0).toUpperCase() + sanitizedDay.slice(1)
                 } at ${selectedTime} with Dr. ${doctorId
                   .replace("dr_", "")
                   .replace("_", " ")
@@ -964,7 +987,8 @@
           // Create Back Button
           const backButton = document.createElement("button");
           backButton.className = "back-button";
-          backButton.innerHTML = '<i class="fas fa-arrow-left"></i> Back';
+          backButton.innerHTML = '<i class="fas fa-arrow-right"></i>'; // Only arrow icon
+          backButton.setAttribute("aria-label", "Go Back"); // Added ARIA label for accessibility
           backButton.addEventListener("click", () => {
             displayDatePicker(doctorId);
           });
