@@ -272,12 +272,7 @@
         bottom: 100%; /* Position above the button */
         left: 50%;
         transform: translateX(-50%);
-        background-color: rgba(
-          31,
-          41,
-          55,
-          0.9
-        ); /* Tailwind's gray-800 with opacity */
+        background-color: rgba(31, 41, 55, 0.9); /* Tailwind's gray-800 with opacity */
         color: white;
         padding: 0.25rem 0.5rem;
         border-radius: 0.375rem; /* Tailwind's rounded-md */
@@ -431,8 +426,8 @@
       .modal-content {
         background-color: white;
         color: #374151; /* Tailwind's gray-700 */
-        dark: bg-gray-800;
-        dark: text-gray-200;
+        dark:bg-gray-800;
+        dark:text-gray-200;
         padding: 2rem;
         border-radius: 0.375rem; /* Tailwind's rounded-md */
         width: 90%;
@@ -459,7 +454,7 @@
         font-size: 1.25rem;
         cursor: pointer;
         color: #374151; /* Tailwind's gray-700 */
-        dark: text-gray-200;
+        dark:text-gray-200;
       }
 
       .modal-body {
@@ -601,9 +596,7 @@
 
     <!-- Command Input Section -->
     <div class="input-section w-full">
-      <div
-        class="input-wrapper mx-auto w-full max-w-md md:max-w-lg lg:max-w-xl mb-4"
-      >
+      <div class="input-wrapper mx-auto w-full max-w-md md:max-w-lg lg:max-w-xl mb-4">
         <!-- Suggestions will appear directly above the input box -->
         <div
           id="suggestions"
@@ -641,9 +634,7 @@
             aria-label="Start Voice Command"
             aria-describedby="micBtnTooltip"
           >
-            <i
-              class="fa-solid fa-microphone text-lg sm:text-xl md:text-2xl"
-            ></i>
+            <i class="fa-solid fa-microphone text-lg sm:text-xl md:text-2xl"></i>
             <!-- Tooltip -->
             <span id="micBtnTooltip" class="tooltip">Start Voice Command</span>
           </button>
@@ -664,9 +655,7 @@
             aria-label="Submit Command"
             aria-describedby="submitBtnTooltip"
           >
-            <i
-              class="fa-solid fa-paper-plane text-lg sm:text-xl md:text-2xl"
-            ></i>
+            <i class="fa-solid fa-paper-plane text-lg sm:text-xl md:text-2xl"></i>
             <!-- Tooltip -->
             <span id="submitBtnTooltip" class="tooltip">Submit Command</span>
           </button>
@@ -719,9 +708,9 @@
             </p>
           </div>
           <div class="guide-item" data-index="1">
-            <i class="fas fa-user-md"></i>
+            <i class="fas fa-graduation-cap"></i> <!-- Updated Icon -->
             <p>
-              Select a doctor from the dropdown to check their availability.
+              Select a professor from the dropdown to check their availability.
             </p>
           </div>
           <div class="guide-item" data-index="2">
