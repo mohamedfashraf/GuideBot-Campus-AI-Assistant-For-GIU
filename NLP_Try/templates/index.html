@@ -219,7 +219,7 @@
 
       /* Adjust modal for smaller screens */
       .modal-content {
-        padding: 1rem; /* Reduced padding */
+        padding: 2rem;
         font-size: 0.875rem; /* text-sm */
       }
 
@@ -272,12 +272,7 @@
         bottom: 100%; /* Position above the button */
         left: 50%;
         transform: translateX(-50%);
-        background-color: rgba(
-          31,
-          41,
-          55,
-          0.9
-        ); /* Tailwind's gray-800 with opacity */
+        background-color: rgba(31, 41, 55, 0.9); /* Tailwind's gray-800 with opacity */
         color: white;
         padding: 0.25rem 0.5rem;
         border-radius: 0.375rem; /* Tailwind's rounded-md */
@@ -291,13 +286,15 @@
 
       /* Tooltip Visibility on Hover */
       .mic-btn:hover .tooltip,
-      .submit-btn:hover .tooltip {
+      .submit-btn:hover .tooltip,
+      .help-btn:hover .tooltip {
         opacity: 1;
       }
 
       /* Ensure buttons have no background or borders */
       button.mic-btn,
-      button.submit-btn {
+      button.submit-btn,
+      button.help-btn {
         background-color: transparent;
         border: none;
       }
@@ -403,6 +400,131 @@
           font-size: 0.75rem; /* text-xs */
         }
       }
+
+      /* Modal Styles */
+      .modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100; /* Above all other elements */
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease-in-out;
+      }
+
+      .modal.active {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .modal-content {
+        background-color: white;
+        color: #374151; /* Tailwind's gray-700 */
+        dark:bg-gray-800;
+        dark:text-gray-200;
+        padding: 2rem;
+        border-radius: 0.375rem; /* Tailwind's rounded-md */
+        width: 90%;
+        max-width: 500px;
+        position: relative;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+
+      .modal-header h2 {
+        font-size: 1.25rem;
+        font-weight: 600;
+      }
+
+      .modal-close {
+        background: none;
+        border: none;
+        font-size: 1.25rem;
+        cursor: pointer;
+        color: #374151; /* Tailwind's gray-700 */
+        dark:text-gray-200;
+      }
+
+      .modal-body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .guide-item {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+
+      .guide-item.active {
+        display: flex;
+      }
+
+      .guide-item i {
+        font-size: 3rem; /* Larger icon size */
+        color: #4f46e5; /* Tailwind's indigo-600 */
+        margin-bottom: 1rem;
+      }
+
+      .guide-item p {
+        font-size: 1rem;
+        color: inherit;
+      }
+
+      .modal-navigation {
+        display: flex;
+        justify-content: space-between;
+        width: 100%;
+        margin-top: 1rem;
+      }
+
+      .modal-navigation button {
+        background-color: #4f46e5; /* Tailwind's indigo-600 */
+        color: white;
+        border: none;
+        padding: 0.5rem;
+        border-radius: 0.375rem; /* Tailwind's rounded-md */
+        cursor: pointer;
+        transition: background-color 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+      }
+
+      .modal-navigation button:hover {
+        background-color: #4338ca; /* Tailwind's indigo-700 */
+      }
+
+      /* Adjust modal for smaller screens */
+      @media (max-width: 640px) {
+        .modal-content {
+          padding: 1rem;
+        }
+
+        .guide-item i {
+          font-size: 2rem; /* Smaller icon size on mobile */
+        }
+
+        .modal-navigation button {
+          padding: 0.25rem;
+          font-size: 0.75rem; /* text-xs */
+        }
+      }
     </style>
   </head>
   <body
@@ -410,7 +532,7 @@
   >
     <!-- Header Section -->
     <header class="flex items-center justify-between px-4 py-2">
-      <!-- Dark Mode Toggle -->
+      <!-- Left Side: Dark Mode Toggle -->
       <div class="flex items-center">
         <button
           id="theme-toggle"
@@ -420,6 +542,20 @@
           <i id="theme-toggle-icon" class="fas fa-moon text-3xl"></i>
         </button>
       </div>
+
+      <!-- Right Side: Help Button -->
+      <div>
+        <button
+          id="helpBtn"
+          class="help-btn flex items-center justify-center text-indigo-500 dark:text-gray-300 w-8 h-8 transition hover:text-indigo-700 focus:outline-none relative"
+          aria-label="Open Help Guide"
+          aria-describedby="helpBtnTooltip"
+        >
+          <i class="fas fa-question-circle text-lg"></i>
+          <!-- Tooltip -->
+          <span id="helpBtnTooltip" class="tooltip">Help Guide</span>
+        </button>
+      </div>
     </header>
 
     <!-- Main Content Area -->
@@ -427,7 +563,7 @@
       <!-- Doctor Selection -->
       <div class="dropdown-section text-center mt-4">
         <div
-          class="w-full max-w-md mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 fade-in-up custom-select"
+          class="w-full max-w-md md:max-w-lg lg:max-w-xl mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 fade-in-up custom-select"
         >
           <select
             id="doctor"
@@ -460,7 +596,7 @@
 
     <!-- Command Input Section -->
     <div class="input-section w-full">
-      <div class="input-wrapper mx-auto w-full max-w-md mb-4">
+      <div class="input-wrapper mx-auto w-full max-w-md md:max-w-lg lg:max-w-xl mb-4">
         <!-- Suggestions will appear directly above the input box -->
         <div
           id="suggestions"
@@ -489,16 +625,16 @@
           </div>
         </div>
         <div
-          class="flex items-center justify-center bg-white dark:bg-gray-800 rounded-md px-3 py-2 shadow-lg mx-4 h-12"
+          class="flex items-center justify-center bg-white dark:bg-gray-800 rounded-md px-3 py-2 shadow-lg mx-4 h-12 sm:h-14 md:h-16 lg:h-16"
         >
           <!-- Mic Button -->
           <button
             id="micBtn"
-            class="mic-btn flex items-center justify-center bg-transparent border-none text-indigo-500 w-8 h-8 mr-2 transition hover:text-indigo-700 focus:outline-none relative"
+            class="mic-btn flex items-center justify-center bg-transparent border-none text-indigo-500 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-12 lg:h-12 mr-2 transition hover:text-indigo-700 focus:outline-none relative"
             aria-label="Start Voice Command"
             aria-describedby="micBtnTooltip"
           >
-            <i class="fa-solid fa-microphone text-lg"></i>
+            <i class="fa-solid fa-microphone text-lg sm:text-xl md:text-2xl"></i>
             <!-- Tooltip -->
             <span id="micBtnTooltip" class="tooltip">Start Voice Command</span>
           </button>
@@ -508,18 +644,18 @@
             type="text"
             id="commandInput"
             placeholder="Speak or type commands..."
-            class="flex-grow px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 text-sm transition-colors duration-200"
+            class="flex-grow px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 text-sm sm:text-base md:text-lg lg:text-lg transition-colors duration-200"
             aria-label="Command Input"
           />
 
           <!-- Submit Button -->
           <button
             id="submitBtn"
-            class="submit-btn flex items-center justify-center bg-transparent border-none text-indigo-500 w-8 h-8 ml-2 transition hover:text-indigo-700 focus:outline-none relative"
+            class="submit-btn flex items-center justify-center bg-transparent border-none text-indigo-500 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-12 lg:h-12 ml-2 transition hover:text-indigo-700 focus:outline-none relative"
             aria-label="Submit Command"
             aria-describedby="submitBtnTooltip"
           >
-            <i class="fa-solid fa-paper-plane text-lg"></i>
+            <i class="fa-solid fa-paper-plane text-lg sm:text-xl md:text-2xl"></i>
             <!-- Tooltip -->
             <span id="submitBtnTooltip" class="tooltip">Submit Command</span>
           </button>
@@ -543,6 +679,40 @@
       class="lottie-animation"
       aria-hidden="true"
     ></div>
+
+    <!-- Help Guide Modal -->
+    <div id="helpModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
+      <div class="modal-content bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+        <div class="modal-header">
+          <h2 id="helpModalTitle">How to Use GuideBot</h2>
+          <button class="modal-close" aria-label="Close Help Guide">&times;</button>
+        </div>
+        <div class="modal-body">
+          <!-- Guide Items -->
+          <div class="guide-item active" data-index="0">
+            <i class="fas fa-microphone"></i>
+            <p>Use the microphone button to speak your commands or type them directly into the input field.</p>
+          </div>
+          <div class="guide-item" data-index="1">
+            <i class="fas fa-user-md"></i>
+            <p>Select a doctor from the dropdown to check their availability and schedule appointments.</p>
+          </div>
+          <div class="guide-item" data-index="2">
+            <i class="fas fa-route"></i>
+            <p>Click on waypoints or use voice commands to navigate the robot to different locations.</p>
+          </div>
+          <!-- Add more guide items as needed -->
+        </div>
+        <div class="modal-navigation">
+          <button id="prevGuide" aria-label="Previous Guide Item">
+            <i class="fas fa-arrow-left"></i>
+          </button>
+          <button id="nextGuide" aria-label="Next Guide Item">
+            <i class="fas fa-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Fallback for No JavaScript -->
     <noscript>
@@ -668,7 +838,7 @@
 
           // Day Picker Dropdown
           const daySelectContainer = document.createElement("div");
-          daySelectContainer.className = "custom-select";
+          daySelectContainer.className = "custom-select w-full";
 
           const daySelect = document.createElement("select");
           daySelect.id = "dayPicker";
@@ -775,7 +945,7 @@
           // Create Back Button
           const backButton = document.createElement("button");
           backButton.className = "back-button";
-          backButton.textContent = "Back to Days";
+          backButton.innerHTML = '<i class="fas fa-arrow-left"></i> Back';
           backButton.addEventListener("click", () => {
             displayDatePicker(doctorId);
           });
@@ -1104,7 +1274,8 @@
 
         const userBubbleContent = document.createElement("div");
         userBubbleContent.className =
-          "max-w-xs px-4 py-2 rounded-lg shadow bg-indigo-500 text-white rounded-br-none text-sm";
+          "max-w-xs px-4 py-2 rounded-lg shadow bg-indigo-500 text-white rounded-br-none text-sm sm:text-base md:text-base";
+
         userBubbleContent.textContent = userCommand;
 
         userMessageBubble.appendChild(userBubbleContent);
@@ -1116,7 +1287,7 @@
 
         const botBubbleContent = document.createElement("div");
         botBubbleContent.className =
-          "max-w-xs px-4 py-2 rounded-lg shadow bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-none text-sm";
+          "max-w-xs px-4 py-2 rounded-lg shadow bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-none text-sm sm:text-base md:text-base";
 
         if (botResponse === "Thinking...") {
           // Insert Music Waves Animation
@@ -1141,6 +1312,66 @@
 
         lastInteractionDiv.appendChild(interactionContent);
       }
+
+      // Help Guide Modal Functionality
+      const helpBtn = document.getElementById("helpBtn");
+      const helpModal = document.getElementById("helpModal");
+      const modalCloseBtn = document.querySelector(".modal-close");
+      const guideItems = document.querySelectorAll(".guide-item");
+      const prevGuideBtn = document.getElementById("prevGuide");
+      const nextGuideBtn = document.getElementById("nextGuide");
+      let currentGuideIndex = 0;
+
+      // Function to open the modal
+      function openModal() {
+        helpModal.classList.add("active");
+        document.body.style.overflow = "hidden"; // Prevent background scrolling
+        currentGuideIndex = 0;
+        showGuideItem(currentGuideIndex);
+      }
+
+      // Function to close the modal
+      function closeModal() {
+        helpModal.classList.remove("active");
+        document.body.style.overflow = "auto"; // Restore background scrolling
+      }
+
+      // Event listener to open the modal
+      helpBtn.addEventListener("click", openModal);
+
+      // Event listener to close the modal
+      modalCloseBtn.addEventListener("click", closeModal);
+
+      // Function to show a specific guide item
+      function showGuideItem(index) {
+        guideItems.forEach((item, idx) => {
+          if (idx === index) {
+            item.classList.add("active");
+          } else {
+            item.classList.remove("active");
+          }
+        });
+      }
+
+      // Event listener for Previous button
+      prevGuideBtn.addEventListener("click", () => {
+        currentGuideIndex =
+          (currentGuideIndex - 1 + guideItems.length) % guideItems.length;
+        showGuideItem(currentGuideIndex);
+      });
+
+      // Event listener for Next button
+      nextGuideBtn.addEventListener("click", () => {
+        currentGuideIndex = (currentGuideIndex + 1) % guideItems.length;
+        showGuideItem(currentGuideIndex);
+      });
+
+      // Close modal when clicking outside the modal content
+      window.addEventListener("click", (e) => {
+        if (e.target === helpModal) {
+          closeModal();
+        }
+      });
     </script>
   </body>
 </html>
