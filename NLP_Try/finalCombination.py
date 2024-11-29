@@ -44,8 +44,6 @@ BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
-DARK_GRAY = (169, 169, 169)
-LIGHT_GRAY = (211, 211, 211)
 
 # Car properties
 CAR_IMAGE_PATH = "navigationTry/2d-super-car-top-view.png"  # Path to the car image
@@ -54,7 +52,6 @@ CAR_SPEED = 2  # Speed at which the car moves
 CAR_ROTATION_SPEED = 5  # Degrees the car rotates per update
 
 # Sensor properties for obstacle detection
-NUM_SENSORS = 3
 SENSOR_LENGTH = 45  # Length of each sensor
 SENSOR_ANGLES = [-30, 0, 30]  # Angles for left, front, and right sensors
 
@@ -245,7 +242,6 @@ def create_doctor_schedule():
         "08:30 - 10:00",
         "10:15 - 11:45",
         "12:00 - 13:30",
-        # "13:45 - 15:15",  # Commented out, possibly unused
         "15:45 - 17:15",
     ]
     for doctor in VALID_DOCTORS:
@@ -296,10 +292,9 @@ def check_room_availability(room):
 app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)  # Enable CORS for all routes if frontend is on a different origin
 
-# State management variables for conversation flow
+# State management variable for conversation flow
 pending_action = None
 pending_action_lock = Lock()
-pending_room = None  # Store the room for which we are asking the day
 
 # Initialize ThreadPoolExecutor for asynchronous NLP processing
 executor = ThreadPoolExecutor(max_workers=4)  # Adjust based on CPU cores
@@ -378,7 +373,7 @@ def open_application(command, original_command_text):
     Returns:
         Flask Response: JSON response to be sent back to the frontend.
     """
-    global pending_action, pending_room
+    global pending_action
     response = ""
     command = command.strip().lower()
 
@@ -1634,9 +1629,6 @@ class CarRobot:
         ("dr_nada", "M216"): ["M216"],
         # Add more paths as needed
     }
-
-    # Map waypoint names to positions with consistent casing
-    waypoint_dict = {}
 
 
 # -------------------- SerialReader Class ---------------------#
