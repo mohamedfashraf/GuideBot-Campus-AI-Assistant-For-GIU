@@ -536,6 +536,12 @@
           font-size: 0.75rem; /* text-xs */
         }
       }
+
+      /* Styles for Disabled Input Elements */
+      .disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
     </style>
   </head>
   <body
@@ -1248,13 +1254,31 @@
        * Function to submit command
        */
       async function submitCommand() {
-        const command = document.getElementById("commandInput").value;
+        const commandInput = document.getElementById("commandInput");
+        const submitBtn = document.getElementById("submitBtn");
+        const micBtn = document.getElementById("micBtn");
+        const command = commandInput.value;
         console.log(`Submitting command: ${command}`);
 
         if (command.trim() === "") {
           alert("Please enter a command.");
           return;
         }
+
+        // Disable input elements to make them busy
+        commandInput.disabled = true;
+        submitBtn.disabled = true;
+        micBtn.disabled = true;
+
+        // Add 'disabled' class for visual feedback
+        commandInput.classList.add("disabled");
+        submitBtn.classList.add("disabled");
+        micBtn.classList.add("disabled");
+
+        // Optionally, change the cursor or show a spinner inside the input
+        commandInput.style.cursor = "not-allowed";
+        submitBtn.style.cursor = "not-allowed";
+        micBtn.style.cursor = "not-allowed";
 
         // Hide suggestions when a command is submitted
         hideSuggestions();
@@ -1289,16 +1313,25 @@
             "Sorry, there was an error processing your command."
           );
         } finally {
-          // Hide loader after processing (if using global loader)
-          // document.getElementById("loader").classList.add("hidden"); // Not needed now
+          // Re-enable input elements after response
+          commandInput.disabled = false;
+          submitBtn.disabled = false;
+          micBtn.disabled = false;
+
+          // Remove 'disabled' class
+          commandInput.classList.remove("disabled");
+          submitBtn.classList.remove("disabled");
+          micBtn.classList.remove("disabled");
+
+          // Restore cursor
+          commandInput.style.cursor = "text";
+          submitBtn.style.cursor = "pointer";
+          micBtn.style.cursor = "pointer";
+
+          // Reset inactivity timers after command submission
+          resetInactivityTimerSuggestions();
+          resetInactivityTimerClearChat();
         }
-
-        // Clear the input field
-        document.getElementById("commandInput").value = "";
-
-        // Reset inactivity timers after command submission
-        resetInactivityTimerSuggestions();
-        resetInactivityTimerClearChat();
       }
 
       /**
@@ -1433,6 +1466,25 @@
       async function sendUserChoice(choice) {
         console.log(`User selected choice: ${choice}`);
 
+        // Disable input elements while processing the choice
+        const commandInput = document.getElementById("commandInput");
+        const submitBtn = document.getElementById("submitBtn");
+        const micBtn = document.getElementById("micBtn");
+
+        commandInput.disabled = true;
+        submitBtn.disabled = true;
+        micBtn.disabled = true;
+
+        // Add 'disabled' class for visual feedback
+        commandInput.classList.add("disabled");
+        submitBtn.classList.add("disabled");
+        micBtn.classList.add("disabled");
+
+        // Optionally, change the cursor or show a spinner inside the input
+        commandInput.style.cursor = "not-allowed";
+        submitBtn.style.cursor = "not-allowed";
+        micBtn.style.cursor = "not-allowed";
+
         try {
           const response = await fetch("http://127.0.0.1:5000/user_choice", {
             method: "POST",
@@ -1449,6 +1501,25 @@
           displayLastInteraction("", data.response);
         } catch (error) {
           console.error("Error sending user choice:", error);
+          displayLastInteraction(
+            "",
+            "Sorry, there was an error processing your choice."
+          );
+        } finally {
+          // Re-enable input elements after response
+          commandInput.disabled = false;
+          submitBtn.disabled = false;
+          micBtn.disabled = false;
+
+          // Remove 'disabled' class
+          commandInput.classList.remove("disabled");
+          submitBtn.classList.remove("disabled");
+          micBtn.classList.remove("disabled");
+
+          // Restore cursor
+          commandInput.style.cursor = "text";
+          submitBtn.style.cursor = "pointer";
+          micBtn.style.cursor = "pointer";
         }
       }
 
@@ -1511,6 +1582,178 @@
           closeModal();
         }
       });
+
+      /**
+       * Function to display the prompt with buttons in the chat
+       */
+      async function displayPromptInChat(promptMessage) {
+        const lastInteractionDiv = document.getElementById("lastInteraction");
+
+        const interactionContent = document.createElement("div");
+        interactionContent.className = "fade-in-up";
+
+        // Bot Prompt Bubble
+        const botMessageBubble = document.createElement("div");
+        botMessageBubble.className = "flex items-start mb-3 justify-start";
+
+        const botBubbleContent = document.createElement("div");
+        botBubbleContent.className =
+          "max-w-xs px-4 py-2 rounded-lg shadow bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-none text-sm sm:text-base md:text-base";
+
+        botBubbleContent.textContent = promptMessage;
+
+        // Create buttons for user choices
+        const buttonContainer = document.createElement("div");
+        buttonContainer.className = "mt-2 flex space-x-2";
+
+        const doneButton = document.createElement("button");
+        doneButton.className =
+          "px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 focus:outline-none";
+        doneButton.textContent = "I'm done";
+        doneButton.addEventListener("click", () => {
+          sendUserChoice("done");
+        });
+
+        const anotherButton = document.createElement("button");
+        anotherButton.className =
+          "px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 focus:outline-none";
+        anotherButton.textContent = "Need something else";
+        anotherButton.addEventListener("click", () => {
+          sendUserChoice("another");
+        });
+
+        buttonContainer.appendChild(doneButton);
+        buttonContainer.appendChild(anotherButton);
+        botBubbleContent.appendChild(buttonContainer);
+
+        botMessageBubble.appendChild(botBubbleContent);
+        interactionContent.appendChild(botMessageBubble);
+
+        lastInteractionDiv.appendChild(interactionContent);
+      }
+
+      // Function to send user's choice back to the backend
+      async function sendUserChoice(choice) {
+        console.log(`User selected choice: ${choice}`);
+
+        // Disable input elements while processing the choice
+        const commandInput = document.getElementById("commandInput");
+        const submitBtn = document.getElementById("submitBtn");
+        const micBtn = document.getElementById("micBtn");
+
+        commandInput.disabled = true;
+        submitBtn.disabled = true;
+        micBtn.disabled = true;
+
+        // Add 'disabled' class for visual feedback
+        commandInput.classList.add("disabled");
+        submitBtn.classList.add("disabled");
+        micBtn.classList.add("disabled");
+
+        // Optionally, change the cursor or show a spinner inside the input
+        commandInput.style.cursor = "not-allowed";
+        submitBtn.style.cursor = "not-allowed";
+        micBtn.style.cursor = "not-allowed";
+
+        try {
+          const response = await fetch("http://127.0.0.1:5000/user_choice", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ choice: choice }),
+          });
+
+          const data = await response.json();
+          console.log("Backend response to user choice:", data.response);
+
+          // Display the bot's response in chat
+          displayLastInteraction("", data.response);
+        } catch (error) {
+          console.error("Error sending user choice:", error);
+          displayLastInteraction(
+            "",
+            "Sorry, there was an error processing your choice."
+          );
+        } finally {
+          // Re-enable input elements after response
+          commandInput.disabled = false;
+          submitBtn.disabled = false;
+          micBtn.disabled = false;
+
+          // Remove 'disabled' class
+          commandInput.classList.remove("disabled");
+          submitBtn.classList.remove("disabled");
+          micBtn.classList.remove("disabled");
+
+          // Restore cursor
+          commandInput.style.cursor = "text";
+          submitBtn.style.cursor = "pointer";
+          micBtn.style.cursor = "pointer";
+        }
+      }
+
+      // Function to display the prompt with buttons in the chat
+      // Removed duplicate function definition
+
+      // Function to handle suggestion click
+      function handleSuggestionClick() {
+        const selectedSuggestion = suggestions[currentSuggestionIndex];
+        document.getElementById("commandInput").value = selectedSuggestion;
+        submitCommand();
+        hideSuggestions();
+        resetInactivityTimerSuggestions(); // Restart the timer
+        resetInactivityTimerClearChat(); // Restart the chat clear timer
+      }
+
+      /**
+       * Function to display the prompt with buttons in the chat
+       */
+      async function displayPromptInChat(promptMessage) {
+        const lastInteractionDiv = document.getElementById("lastInteraction");
+
+        const interactionContent = document.createElement("div");
+        interactionContent.className = "fade-in-up";
+
+        // Bot Prompt Bubble
+        const botMessageBubble = document.createElement("div");
+        botMessageBubble.className = "flex items-start mb-3 justify-start";
+
+        const botBubbleContent = document.createElement("div");
+        botBubbleContent.className =
+          "max-w-xs px-4 py-2 rounded-lg shadow bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-none text-sm sm:text-base md:text-base";
+
+        botBubbleContent.textContent = promptMessage;
+
+        // Create buttons for user choices
+        const buttonContainer = document.createElement("div");
+        buttonContainer.className = "mt-2 flex space-x-2";
+
+        const doneButton = document.createElement("button");
+        doneButton.className =
+          "px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 focus:outline-none";
+        doneButton.textContent = "I'm done";
+        doneButton.addEventListener("click", () => {
+          sendUserChoice("done");
+        });
+
+        const anotherButton = document.createElement("button");
+        anotherButton.className =
+          "px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 focus:outline-none";
+        anotherButton.textContent = "Need something else";
+        anotherButton.addEventListener("click", () => {
+          sendUserChoice("another");
+        });
+
+        buttonContainer.appendChild(doneButton);
+        buttonContainer.appendChild(anotherButton);
+        botBubbleContent.appendChild(buttonContainer);
+
+        botMessageBubble.appendChild(botBubbleContent);
+        interactionContent.appendChild(botMessageBubble);
+
+        lastInteractionDiv.appendChild(interactionContent);
+      }
     </script>
   </body>
 </html>
