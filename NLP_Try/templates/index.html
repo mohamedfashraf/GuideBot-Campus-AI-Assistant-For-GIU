@@ -11,6 +11,17 @@
     <script>
       tailwind.config = {
         darkMode: "class",
+        theme: {
+          extend: {
+            // Extend Tailwind's default configurations if needed
+          },
+        },
+        variants: {
+          extend: {
+            opacity: ["disabled"],
+            cursor: ["disabled"],
+          },
+        },
       };
     </script>
     <!-- Font Awesome -->
@@ -298,15 +309,6 @@
         opacity: 1;
       }
 
-      /* Ensure buttons have no background or borders */
-      button.mic-btn,
-      button.submit-btn,
-      button.help-btn {
-        background-color: transparent;
-        border: none;
-        transition: opacity 0.3s ease, cursor 0.3s ease; /* Added transition */
-      }
-
       /* Loading Spinner Styling */
       .spinner-border {
         border-top-color: transparent;
@@ -537,30 +539,6 @@
           font-size: 0.75rem; /* text-xs */
         }
       }
-
-      /* Styles for Disabled Input Elements */
-      .disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-        transition: opacity 0.3s ease, cursor 0.3s ease;
-      }
-
-      /* Interactive Elements with Transition Effects */
-      button.mic-btn,
-      button.submit-btn,
-      button.help-btn,
-      #commandInput {
-        transition: opacity 0.3s ease, cursor 0.3s ease;
-      }
-
-      /* Optional: Additional Disabled State Styling */
-      button.disabled {
-        transform: scale(0.98);
-      }
-
-      #commandInput.disabled {
-        background-color: #f3f4f6; /* Tailwind's gray-100 */
-      }
     </style>
   </head>
   <body
@@ -684,7 +662,7 @@
             type="text"
             id="commandInput"
             placeholder="Speak or type commands..."
-            class="flex-grow px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 text-sm sm:text-base md:text-lg lg:text-lg transition-colors duration-200"
+            class="flex-grow px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 text-sm sm:text-base md:text-lg lg:text-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="Command Input"
           />
 
@@ -1292,16 +1270,6 @@
         submitBtn.disabled = true;
         micBtn.disabled = true;
 
-        // Add 'disabled' class for visual feedback
-        commandInput.classList.add("disabled");
-        submitBtn.classList.add("disabled");
-        micBtn.classList.add("disabled");
-
-        // Optionally, change the cursor or show a spinner inside the input
-        commandInput.style.cursor = "not-allowed";
-        submitBtn.style.cursor = "not-allowed";
-        micBtn.style.cursor = "not-allowed";
-
         // Hide suggestions when a command is submitted
         hideSuggestions();
 
@@ -1339,16 +1307,6 @@
           commandInput.disabled = false;
           submitBtn.disabled = false;
           micBtn.disabled = false;
-
-          // Remove 'disabled' class
-          commandInput.classList.remove("disabled");
-          submitBtn.classList.remove("disabled");
-          micBtn.classList.remove("disabled");
-
-          // Restore cursor
-          commandInput.style.cursor = "text";
-          submitBtn.style.cursor = "pointer";
-          micBtn.style.cursor = "pointer";
 
           // Reset inactivity timers after command submission
           resetInactivityTimerSuggestions();
@@ -1505,15 +1463,8 @@
         submitBtn.disabled = true;
         micBtn.disabled = true;
 
-        // Add 'disabled' class for visual feedback
-        commandInput.classList.add("disabled");
-        submitBtn.classList.add("disabled");
-        micBtn.classList.add("disabled");
-
-        // Optionally, change the cursor or show a spinner inside the input
-        commandInput.style.cursor = "not-allowed";
-        submitBtn.style.cursor = "not-allowed";
-        micBtn.style.cursor = "not-allowed";
+        // Hide suggestions when a choice is made
+        hideSuggestions();
 
         try {
           const response = await fetch("http://127.0.0.1:5000/user_choice", {
@@ -1541,15 +1492,9 @@
           submitBtn.disabled = false;
           micBtn.disabled = false;
 
-          // Remove 'disabled' class
-          commandInput.classList.remove("disabled");
-          submitBtn.classList.remove("disabled");
-          micBtn.classList.remove("disabled");
-
-          // Restore cursor
-          commandInput.style.cursor = "text";
-          submitBtn.style.cursor = "pointer";
-          micBtn.style.cursor = "pointer";
+          // Reset inactivity timers after choice submission
+          resetInactivityTimerSuggestions();
+          resetInactivityTimerClearChat();
         }
       }
 
