@@ -561,7 +561,7 @@
       <div>
         <button
           id="helpBtn"
-          class="help-btn flex items-center justify-center text-indigo-500 dark:text-gray-300 w-8 h-8 transition hover:text-indigo-700 focus:outline-none relative"
+          class="help-btn flex items-center justify-center text-indigo-500 dark:text-gray-300 w-8 h-8 transition hover:text-indigo-700 focus:outline-none relative disabled:opacity-50 disabled:cursor-not-allowed"
           aria-label="Open Help Guide"
           aria-describedby="helpBtnTooltip"
         >
@@ -641,12 +641,12 @@
           </div>
         </div>
         <div
-          class="flex items-center justify-center bg-white dark:bg-gray-800 rounded-md px-3 py-2 shadow-lg mx-4 h-12 sm:h-14 md:h-16 lg:h-16"
+          class="flex items-center justify-center bg-white dark:bg-gray-800 rounded-md px-3 py-2 shadow-lg mx-4 h-12 sm:h-14 md:h-16 lg:h-16 relative"
         >
           <!-- Mic Button -->
           <button
             id="micBtn"
-            class="mic-btn flex items-center justify-center bg-transparent border-none text-indigo-500 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-12 lg:h-12 mr-2 transition hover:text-indigo-700 focus:outline-none relative"
+            class="mic-btn flex items-center justify-center bg-transparent border-none text-indigo-500 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-12 lg:h-12 mr-2 transition hover:text-indigo-700 focus:outline-none relative disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="Start Voice Command"
             aria-describedby="micBtnTooltip"
           >
@@ -655,21 +655,39 @@
             ></i>
             <!-- Tooltip -->
             <span id="micBtnTooltip" class="tooltip">Start Voice Command</span>
+            <!-- Spinner Overlay (Removed) -->
+            <!--
+            <div id="micSpinner" class="absolute inset-0 flex items-center justify-center hidden">
+              <svg class="h-4 w-4 text-indigo-500 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+              </svg>
+            </div>
+            -->
           </button>
 
           <!-- Input Field -->
-          <input
-            type="text"
-            id="commandInput"
-            placeholder="Speak or type commands..."
-            class="flex-grow px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 text-sm sm:text-base md:text-lg lg:text-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            aria-label="Command Input"
-          />
+          <div class="relative flex-grow">
+            <input
+              type="text"
+              id="commandInput"
+              placeholder="Speak or type commands..."
+              class="w-full px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 text-sm sm:text-base md:text-lg lg:text-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Command Input"
+            />
+            <!-- Input Spinner -->
+            <div id="inputSpinner" class="absolute inset-y-0 right-0 pr-3 flex items-center hidden">
+              <svg class="h-5 w-5 text-gray-500 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+              </svg>
+            </div>
+          </div>
 
           <!-- Submit Button -->
           <button
             id="submitBtn"
-            class="submit-btn flex items-center justify-center bg-transparent border-none text-indigo-500 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-12 lg:h-12 ml-2 transition hover:text-indigo-700 focus:outline-none relative"
+            class="submit-btn flex items-center justify-center bg-transparent border-none text-indigo-500 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-12 lg:h-12 ml-2 transition hover:text-indigo-700 focus:outline-none relative disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="Submit Command"
             aria-describedby="submitBtnTooltip"
           >
@@ -678,6 +696,15 @@
             ></i>
             <!-- Tooltip -->
             <span id="submitBtnTooltip" class="tooltip">Submit Command</span>
+            <!-- Spinner Overlay (Removed) -->
+            <!--
+            <div id="submitSpinner" class="absolute inset-0 flex items-center justify-center hidden">
+              <svg class="h-4 w-4 text-indigo-500 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+              </svg>
+            </div>
+            -->
           </button>
         </div>
       </div>
@@ -1270,6 +1297,9 @@
         submitBtn.disabled = true;
         micBtn.disabled = true;
 
+        // Show spinner in input box
+        document.getElementById("inputSpinner").classList.remove("hidden");
+
         // Hide suggestions when a command is submitted
         hideSuggestions();
 
@@ -1307,6 +1337,9 @@
           commandInput.disabled = false;
           submitBtn.disabled = false;
           micBtn.disabled = false;
+
+          // Hide spinner in input box
+          document.getElementById("inputSpinner").classList.add("hidden");
 
           // Reset inactivity timers after command submission
           resetInactivityTimerSuggestions();
@@ -1463,6 +1496,9 @@
         submitBtn.disabled = true;
         micBtn.disabled = true;
 
+        // Show spinner in input box
+        document.getElementById("inputSpinner").classList.remove("hidden");
+
         // Hide suggestions when a choice is made
         hideSuggestions();
 
@@ -1491,6 +1527,9 @@
           commandInput.disabled = false;
           submitBtn.disabled = false;
           micBtn.disabled = false;
+
+          // Hide spinner in input box
+          document.getElementById("inputSpinner").classList.add("hidden");
 
           // Reset inactivity timers after choice submission
           resetInactivityTimerSuggestions();
