@@ -1065,7 +1065,7 @@ def handle_user_choice():
     elif choice == "another":
         # User wants to give another command
         command_queue.put("user_choice_another")
-        response = "Please provide your next command."
+        response = "How may I help you further?"
     else:
         response = "Invalid choice."
 
@@ -1917,7 +1917,7 @@ class Game:
                 elif command == "user_choice_another":
                     # User wants to choose another waypoint
                     self.car.state_reason = "Waiting for new command"
-                    response_queue.put("Where do you want to go next")
+                    response_queue.put("How may I help you further")
         except queue.Empty:
             pass  # No commands to process
 
