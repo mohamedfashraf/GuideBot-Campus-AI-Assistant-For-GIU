@@ -97,6 +97,7 @@
         color: #374151; /* Tailwind's gray-700 */
         box-sizing: border-box; /* Ensure padding is included in width */
         cursor: pointer;
+        transition: opacity 0.3s ease, cursor 0.3s ease; /* Added transition */
       }
 
       /* Hide the default arrow in IE/Edge */
@@ -178,7 +179,7 @@
         border: none;
         border-radius: 0.375rem; /* Tailwind's rounded-md */
         cursor: pointer;
-        transition: background-color 0.3s;
+        transition: background-color 0.3s, opacity 0.3s ease, cursor 0.3s ease;
         height: 2rem; /* Consistent height */
         display: flex;
         align-items: center;
@@ -198,7 +199,7 @@
         border: none;
         border-radius: 0.375rem; /* Tailwind's rounded-md */
         cursor: pointer;
-        transition: background-color 0.3s;
+        transition: background-color 0.3s, opacity 0.3s ease, cursor 0.3s ease;
         height: 2rem; /* Consistent height */
         display: flex;
         align-items: center;
@@ -278,12 +279,7 @@
         bottom: 100%; /* Position above the button */
         left: 50%;
         transform: translateX(-50%);
-        background-color: rgba(
-          31,
-          41,
-          55,
-          0.9
-        ); /* Tailwind's gray-800 with opacity */
+        background-color: rgba(31, 41, 55, 0.9); /* Tailwind's gray-800 with opacity */
         color: white;
         padding: 0.25rem 0.5rem;
         border-radius: 0.375rem; /* Tailwind's rounded-md */
@@ -308,6 +304,7 @@
       button.help-btn {
         background-color: transparent;
         border: none;
+        transition: opacity 0.3s ease, cursor 0.3s ease; /* Added transition */
       }
 
       /* Loading Spinner Styling */
@@ -337,7 +334,9 @@
       #commandInput {
         transition:
           border-color 0.2s ease-in-out,
-          box-shadow 0.2s ease-in-out;
+          box-shadow 0.2s ease-in-out,
+          opacity 0.3s ease,
+          cursor 0.3s ease; /* Added transition */
       }
 
       /* Suggestions Container Styling */
@@ -363,7 +362,9 @@
         border-radius: 0.375rem; /* Tailwind's rounded-md */
         transition:
           background-color 0.2s,
-          color 0.2s;
+          color 0.2s,
+          opacity 0.3s ease,
+          cursor 0.3s ease; /* Added transition */
       }
 
       .suggestion-text:hover {
@@ -377,7 +378,7 @@
         color: #4f46e5; /* Tailwind's indigo-600 */
         cursor: pointer;
         font-size: 1rem;
-        transition: color 0.2s;
+        transition: color 0.2s, opacity 0.3s ease, cursor 0.3s ease; /* Added transition */
       }
 
       .arrow-button:hover {
@@ -437,8 +438,8 @@
       .modal-content {
         background-color: white;
         color: #374151; /* Tailwind's gray-700 */
-        dark: bg-gray-800;
-        dark: text-gray-200;
+        dark:bg-gray-800;
+        dark:text-gray-200;
         padding: 2rem;
         border-radius: 0.375rem; /* Tailwind's rounded-md */
         width: 90%;
@@ -465,7 +466,7 @@
         font-size: 1.25rem;
         cursor: pointer;
         color: #374151; /* Tailwind's gray-700 */
-        dark: text-gray-200;
+        dark:text-gray-200;
       }
 
       .modal-body {
@@ -541,6 +542,24 @@
       .disabled {
         opacity: 0.5;
         cursor: not-allowed;
+        transition: opacity 0.3s ease, cursor 0.3s ease;
+      }
+
+      /* Interactive Elements with Transition Effects */
+      button.mic-btn,
+      button.submit-btn,
+      button.help-btn,
+      #commandInput {
+        transition: opacity 0.3s ease, cursor 0.3s ease;
+      }
+
+      /* Optional: Additional Disabled State Styling */
+      button.disabled {
+        transform: scale(0.98);
+      }
+
+      #commandInput.disabled {
+        background-color: #f3f4f6; /* Tailwind's gray-100 */
       }
     </style>
   </head>
@@ -1265,6 +1284,9 @@
           return;
         }
 
+        // Clear the input box immediately after retrieving the command
+        commandInput.value = "";
+
         // Disable input elements to make them busy
         commandInput.disabled = true;
         submitBtn.disabled = true;
@@ -1350,17 +1372,19 @@
         interactionContent.className = "fade-in-up";
 
         // User Command Bubble
-        const userMessageBubble = document.createElement("div");
-        userMessageBubble.className = "flex items-start mb-3 justify-end";
+        if (userCommand) {
+          const userMessageBubble = document.createElement("div");
+          userMessageBubble.className = "flex items-start mb-3 justify-end";
 
-        const userBubbleContent = document.createElement("div");
-        userBubbleContent.className =
-          "max-w-xs px-4 py-2 rounded-lg shadow bg-indigo-500 text-white rounded-br-none text-sm sm:text-base md:text-base";
+          const userBubbleContent = document.createElement("div");
+          userBubbleContent.className =
+            "max-w-xs px-4 py-2 rounded-lg shadow bg-indigo-500 text-white rounded-br-none text-sm sm:text-base md:text-base";
 
-        userBubbleContent.textContent = userCommand;
+          userBubbleContent.textContent = userCommand;
 
-        userMessageBubble.appendChild(userBubbleContent);
-        interactionContent.appendChild(userMessageBubble);
+          userMessageBubble.appendChild(userBubbleContent);
+          interactionContent.appendChild(userMessageBubble);
+        }
 
         // Bot Response Bubble
         const botMessageBubble = document.createElement("div");
@@ -1415,7 +1439,10 @@
         setInterval(checkForPrompt, 3000); // Check every 3 seconds
       }
 
-      // Function to display the prompt with buttons in the chat
+      /**
+       * Function to display the prompt with buttons in the chat
+       * @param {string} promptMessage - The prompt message from the backend
+       */
       function displayPromptInChat(promptMessage) {
         const lastInteractionDiv = document.getElementById("lastInteraction");
 
@@ -1462,7 +1489,10 @@
         lastInteractionDiv.appendChild(interactionContent);
       }
 
-      // Function to send user's choice back to the backend
+      /**
+       * Function to send user's choice back to the backend
+       * @param {string} choice - The user's choice ('done' or 'another')
+       */
       async function sendUserChoice(choice) {
         console.log(`User selected choice: ${choice}`);
 
@@ -1582,178 +1612,6 @@
           closeModal();
         }
       });
-
-      /**
-       * Function to display the prompt with buttons in the chat
-       */
-      async function displayPromptInChat(promptMessage) {
-        const lastInteractionDiv = document.getElementById("lastInteraction");
-
-        const interactionContent = document.createElement("div");
-        interactionContent.className = "fade-in-up";
-
-        // Bot Prompt Bubble
-        const botMessageBubble = document.createElement("div");
-        botMessageBubble.className = "flex items-start mb-3 justify-start";
-
-        const botBubbleContent = document.createElement("div");
-        botBubbleContent.className =
-          "max-w-xs px-4 py-2 rounded-lg shadow bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-none text-sm sm:text-base md:text-base";
-
-        botBubbleContent.textContent = promptMessage;
-
-        // Create buttons for user choices
-        const buttonContainer = document.createElement("div");
-        buttonContainer.className = "mt-2 flex space-x-2";
-
-        const doneButton = document.createElement("button");
-        doneButton.className =
-          "px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 focus:outline-none";
-        doneButton.textContent = "I'm done";
-        doneButton.addEventListener("click", () => {
-          sendUserChoice("done");
-        });
-
-        const anotherButton = document.createElement("button");
-        anotherButton.className =
-          "px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 focus:outline-none";
-        anotherButton.textContent = "Need something else";
-        anotherButton.addEventListener("click", () => {
-          sendUserChoice("another");
-        });
-
-        buttonContainer.appendChild(doneButton);
-        buttonContainer.appendChild(anotherButton);
-        botBubbleContent.appendChild(buttonContainer);
-
-        botMessageBubble.appendChild(botBubbleContent);
-        interactionContent.appendChild(botMessageBubble);
-
-        lastInteractionDiv.appendChild(interactionContent);
-      }
-
-      // Function to send user's choice back to the backend
-      async function sendUserChoice(choice) {
-        console.log(`User selected choice: ${choice}`);
-
-        // Disable input elements while processing the choice
-        const commandInput = document.getElementById("commandInput");
-        const submitBtn = document.getElementById("submitBtn");
-        const micBtn = document.getElementById("micBtn");
-
-        commandInput.disabled = true;
-        submitBtn.disabled = true;
-        micBtn.disabled = true;
-
-        // Add 'disabled' class for visual feedback
-        commandInput.classList.add("disabled");
-        submitBtn.classList.add("disabled");
-        micBtn.classList.add("disabled");
-
-        // Optionally, change the cursor or show a spinner inside the input
-        commandInput.style.cursor = "not-allowed";
-        submitBtn.style.cursor = "not-allowed";
-        micBtn.style.cursor = "not-allowed";
-
-        try {
-          const response = await fetch("http://127.0.0.1:5000/user_choice", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ choice: choice }),
-          });
-
-          const data = await response.json();
-          console.log("Backend response to user choice:", data.response);
-
-          // Display the bot's response in chat
-          displayLastInteraction("", data.response);
-        } catch (error) {
-          console.error("Error sending user choice:", error);
-          displayLastInteraction(
-            "",
-            "Sorry, there was an error processing your choice."
-          );
-        } finally {
-          // Re-enable input elements after response
-          commandInput.disabled = false;
-          submitBtn.disabled = false;
-          micBtn.disabled = false;
-
-          // Remove 'disabled' class
-          commandInput.classList.remove("disabled");
-          submitBtn.classList.remove("disabled");
-          micBtn.classList.remove("disabled");
-
-          // Restore cursor
-          commandInput.style.cursor = "text";
-          submitBtn.style.cursor = "pointer";
-          micBtn.style.cursor = "pointer";
-        }
-      }
-
-      // Function to display the prompt with buttons in the chat
-      // Removed duplicate function definition
-
-      // Function to handle suggestion click
-      function handleSuggestionClick() {
-        const selectedSuggestion = suggestions[currentSuggestionIndex];
-        document.getElementById("commandInput").value = selectedSuggestion;
-        submitCommand();
-        hideSuggestions();
-        resetInactivityTimerSuggestions(); // Restart the timer
-        resetInactivityTimerClearChat(); // Restart the chat clear timer
-      }
-
-      /**
-       * Function to display the prompt with buttons in the chat
-       */
-      async function displayPromptInChat(promptMessage) {
-        const lastInteractionDiv = document.getElementById("lastInteraction");
-
-        const interactionContent = document.createElement("div");
-        interactionContent.className = "fade-in-up";
-
-        // Bot Prompt Bubble
-        const botMessageBubble = document.createElement("div");
-        botMessageBubble.className = "flex items-start mb-3 justify-start";
-
-        const botBubbleContent = document.createElement("div");
-        botBubbleContent.className =
-          "max-w-xs px-4 py-2 rounded-lg shadow bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-none text-sm sm:text-base md:text-base";
-
-        botBubbleContent.textContent = promptMessage;
-
-        // Create buttons for user choices
-        const buttonContainer = document.createElement("div");
-        buttonContainer.className = "mt-2 flex space-x-2";
-
-        const doneButton = document.createElement("button");
-        doneButton.className =
-          "px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 focus:outline-none";
-        doneButton.textContent = "I'm done";
-        doneButton.addEventListener("click", () => {
-          sendUserChoice("done");
-        });
-
-        const anotherButton = document.createElement("button");
-        anotherButton.className =
-          "px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 focus:outline-none";
-        anotherButton.textContent = "Need something else";
-        anotherButton.addEventListener("click", () => {
-          sendUserChoice("another");
-        });
-
-        buttonContainer.appendChild(doneButton);
-        buttonContainer.appendChild(anotherButton);
-        botBubbleContent.appendChild(buttonContainer);
-
-        botMessageBubble.appendChild(botBubbleContent);
-        interactionContent.appendChild(botMessageBubble);
-
-        lastInteractionDiv.appendChild(interactionContent);
-      }
     </script>
   </body>
 </html>
