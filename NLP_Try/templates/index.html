@@ -860,7 +860,8 @@
 
           const scheduleContent = document.createElement("div");
           scheduleContent.className =
-            "w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 fade-in-up"; // Changed p-4 to p-2
+            "w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 fade-in-up custom-select";
+          // Changed p-4 to p-2
 
           // *** Removed the "Select a Day:" header ***
           // const scheduleHeader = document.createElement("h2");
@@ -924,7 +925,8 @@
 
         const scheduleContent = document.createElement("div");
         scheduleContent.className =
-          "w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 fade-in-up"; // Changed p-4 to p-2
+          "w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 fade-in-up";
+        // Changed p-4 to p-2
 
         // **Sanitize the day string to remove any non-alphabetic characters**
         const sanitizedDay = day.replace(/[^a-zA-Z]/g, "");
@@ -1190,6 +1192,9 @@
         showSuggestions();
         resetInactivityTimerSuggestions();
         resetInactivityTimerClearChat();
+
+        // Start checking for prompts from the backend
+        startCheckingForPrompts();
       };
 
       // Reset inactivity timers on user activity
@@ -1354,6 +1359,97 @@
         interactionContent.appendChild(botMessageBubble);
 
         lastInteractionDiv.appendChild(interactionContent);
+      }
+
+      // Function to check for prompts from the backend
+      async function checkForPrompt() {
+        try {
+          const response = await fetch("http://127.0.0.1:5000/get_prompt");
+          const data = await response.json();
+          const prompt = data.prompt;
+
+          if (prompt) {
+            console.log(`Received prompt: ${prompt}`);
+            displayPromptInChat(prompt);
+          }
+        } catch (error) {
+          console.error("Error fetching prompt:", error);
+        }
+      }
+
+      // Function to start checking for prompts at intervals
+      function startCheckingForPrompts() {
+        setInterval(checkForPrompt, 3000); // Check every 3 seconds
+      }
+
+      // Function to display the prompt with buttons in the chat
+      function displayPromptInChat(promptMessage) {
+        const lastInteractionDiv = document.getElementById("lastInteraction");
+
+        const interactionContent = document.createElement("div");
+        interactionContent.className = "fade-in-up";
+
+        // Bot Prompt Bubble
+        const botMessageBubble = document.createElement("div");
+        botMessageBubble.className = "flex items-start mb-3 justify-start";
+
+        const botBubbleContent = document.createElement("div");
+        botBubbleContent.className =
+          "max-w-xs px-4 py-2 rounded-lg shadow bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-none text-sm sm:text-base md:text-base";
+
+        botBubbleContent.textContent = promptMessage;
+
+        // Create buttons for user choices
+        const buttonContainer = document.createElement("div");
+        buttonContainer.className = "mt-2 flex space-x-2";
+
+        const doneButton = document.createElement("button");
+        doneButton.className =
+          "px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 focus:outline-none";
+        doneButton.textContent = "I'm done";
+        doneButton.addEventListener("click", () => {
+          sendUserChoice("done");
+        });
+
+        const anotherButton = document.createElement("button");
+        anotherButton.className =
+          "px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 focus:outline-none";
+        anotherButton.textContent = "Need something else";
+        anotherButton.addEventListener("click", () => {
+          sendUserChoice("another");
+        });
+
+        buttonContainer.appendChild(doneButton);
+        buttonContainer.appendChild(anotherButton);
+        botBubbleContent.appendChild(buttonContainer);
+
+        botMessageBubble.appendChild(botBubbleContent);
+        interactionContent.appendChild(botMessageBubble);
+
+        lastInteractionDiv.appendChild(interactionContent);
+      }
+
+      // Function to send user's choice back to the backend
+      async function sendUserChoice(choice) {
+        console.log(`User selected choice: ${choice}`);
+
+        try {
+          const response = await fetch("http://127.0.0.1:5000/user_choice", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ choice: choice }),
+          });
+
+          const data = await response.json();
+          console.log("Backend response to user choice:", data.response);
+
+          // Display the bot's response in chat
+          displayLastInteraction("", data.response);
+        } catch (error) {
+          console.error("Error sending user choice:", error);
+        }
       }
 
       // Help Guide Modal Functionality

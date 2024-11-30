@@ -1044,6 +1044,34 @@ def get_prompt():
         return jsonify({"prompt": None})
 
 
+@app.route("/user_choice", methods=["POST"])
+def handle_user_choice():
+    """
+    Handle the user's choice after reaching a destination.
+
+    Expects JSON data with a 'choice' field.
+
+    Returns:
+        JSON response with the assistant's reply.
+    """
+    data = request.json
+    choice = data.get("choice")
+    logger.info(f"User made a choice: {choice}")
+
+    if choice == "done":
+        # User is done, instruct the robot to return to start
+        command_queue.put("user_choice_done")
+        response = "Returning to the starting point."
+    elif choice == "another":
+        # User wants to give another command
+        command_queue.put("user_choice_another")
+        response = "Please provide your next command."
+    else:
+        response = "Invalid choice."
+
+    return jsonify({"response": response})
+
+
 @app.route("/post_choice", methods=["POST"])
 def post_choice():
     """
@@ -1377,14 +1405,14 @@ class CarRobot:
                 destination_name = self.current_location_name
                 if not self.is_returning_to_start:
                     # Send prompt to frontend
-                    prompt_message = f"Reached {destination_name.replace('_', ' ')}"
+                    prompt_message = f"Reached {destination_name.replace('_', ' ')}. Are you done or do you need something else?"
                     self.prompt_queue.put(prompt_message)
                     self.state_reason = "Awaiting user choice"
                 else:
                     # If returning to start, reset the flag and set reason
                     self.is_returning_to_start = False
                     self.state_reason = "At Start Point"
-            return True
+                return True
         return False
 
     def get_waypoint_name(self, position):
@@ -1886,9 +1914,9 @@ class Game:
                     # User has completed their choice, return to start
                     self.car.return_to_start()
                     response_queue.put("Goodbye, going to start point.")
-                elif command == "user_choice_go_another":
+                elif command == "user_choice_another":
                     # User wants to choose another waypoint
-                    self.car.state_reason = "Waiting for waypoint"
+                    self.car.state_reason = "Waiting for new command"
                     response_queue.put("Where do you want to go next")
         except queue.Empty:
             pass  # No commands to process
