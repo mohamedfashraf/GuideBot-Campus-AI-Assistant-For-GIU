@@ -1061,7 +1061,7 @@ def handle_user_choice():
     if choice == "done":
         # User is done, instruct the robot to return to start
         command_queue.put("user_choice_done")
-        response = "Returning to the starting point."
+        response = "Goodbye, going to start point."
     elif choice == "another":
         # User wants to give another command
         command_queue.put("user_choice_another")
