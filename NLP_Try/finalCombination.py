@@ -66,7 +66,7 @@ nlp = pipeline(
     model="microsoft/deberta-base-mnli",
     tokenizer="microsoft/deberta-base-mnli",
     framework="pt",
-    device=-1,
+    device=-1,  # for CPU usage -1 for GPU usage 0
 )
 
 # Define buildings and rooms
