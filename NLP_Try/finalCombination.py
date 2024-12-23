@@ -29,27 +29,74 @@ prompt_queue = queue.Queue()
 # -------------------- Constants ---------------------#
 
 pygame.init()
+pygame.font.init()  # Ensure font module is initialized
 
-WIDTH, HEIGHT = 800, 600
-BUTTON_AREA_HEIGHT = 50
-TOTAL_HEIGHT = HEIGHT + BUTTON_AREA_HEIGHT
+# Window dimensions
+WIDTH, HEIGHT = 600, 450  # Main simulation area: 600x450
+BUTTON_AREA_HEIGHT = 150  # Bottom status area: 600x150
+TOTAL_HEIGHT = HEIGHT + BUTTON_AREA_HEIGHT  # Total window size: 600x600
 
+# Colors
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-RED = (255, 0, 0)
+RED_COLOR = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 
-CAR_IMAGE_PATH = "navigationTry/2d-super-car-top-view.png"
-CAR_SIZE = (80, 40)
-CAR_SPEED = 2
-CAR_ROTATION_SPEED = 5
-SENSOR_LENGTH = 45
+# Real-world dimensions (meters)
+inner_points_real = [
+    (0, 0),  # Start point
+    (0, 20),  # First corner
+    (39.3, 20),  # Second corner
+    (39.3, 0),  # Last point
+]
+
+outer_points_real = [
+    (-2.7, 0),  # Start point
+    (-2.7, 23.5),  # First corner
+    (42.8, 23.5),  # Second corner
+    (42.8, 0),  # Last point
+]
+
+# Scale factor based on real-world corridor dimensions and screen size
+PAD = 40  # Padding around corridor in the Pygame window
+
+
+def compute_scale(width_m, height_m, screen_width, screen_height, pad):
+    scale_w = (screen_width - 2 * pad) / width_m
+    scale_h = (screen_height - 2 * pad) / height_m
+    return min(scale_w, scale_h)
+
+
+real_width = 42.8 + 2.7  # Outer width in meters = 45.5m
+real_height = 23.5  # Outer height in meters
+
+SCALE = compute_scale(real_width, real_height, WIDTH, HEIGHT, PAD)
+
+# Robot real-life diameter
+ROBOT_DIAMETER_REAL = 0.03  # meters
+
+# Scaled robot diameter (for collision detection)
+ROBOT_DIAMETER_SCALED = ROBOT_DIAMETER_REAL * SCALE  # e.g., ~1.35 pixels
+
+# Minimum visual size for robot in Pygame
+ROBOT_VISUAL_DIAMETER = max(10, int(ROBOT_DIAMETER_SCALED))  # At least 10 pixels
+
+# Further Adjusted Car Speed
+CAR_SPEED = 0.5  # Reduced from 1 to 0.5 for slower movement
+CAR_ROTATION_SPEED = 3  # Optional: Reduced rotation speed for smoother turns
+
+# Sensor length definitions
+SENSOR_LENGTH_REAL = 0.15  # 15 cm in meters
+SENSOR_LENGTH = max(
+    15, int(SENSOR_LENGTH_REAL * SCALE)
+)  # pixels, minimum 15 for visibility
+
 SENSOR_ANGLES = [-30, 0, 30]
 WAYPOINT_THRESHOLD = 20
 FPS = 60
 
-SERIAL_PORT = "COM5"
+SERIAL_PORT = "COM5"  # Update this to your Arduino's serial port
 BAUD_RATE = 115200
 
 logging.basicConfig(
@@ -66,7 +113,7 @@ nlp = pipeline(
     model="microsoft/deberta-base-mnli",
     tokenizer="microsoft/deberta-base-mnli",
     framework="pt",
-    device=-1,  # for CPU usage -1 for GPU usage 0
+    device=-1,  # CPU
 )
 
 # Define buildings and rooms
@@ -78,8 +125,6 @@ VALID_BUILDINGS = {
     },
     "S": {"name": "Building S", "rooms": {"S301", "S302", "S303"}},
 }
-
-# Collect all rooms from buildings
 all_rooms = set()
 for b_data in VALID_BUILDINGS.values():
     all_rooms.update(b_data["rooms"])
@@ -189,6 +234,8 @@ labels.extend(
         "admission at giu",
         "next semester at giu",
         "apply for next semester",
+        "computer science department",
+        "cs department",
     ]
 )
 
@@ -327,37 +374,29 @@ def get_doctor_availability_data(doctor_id):
     current_day = datetime.now().strftime("%A").lower()
     current_time = datetime.now().strftime("%H:%M")
     availability = doctor_availability.get(doctor_id, {})
-    if current_day in availability:
-        for time_range in availability[current_day]:
+    if availability:
+        for time_range in availability.get(current_day, []):
             start_time, end_time = map(str.strip, time_range.split("-"))
             if start_time <= current_time <= end_time:
                 return {"is_available": True}
-        for time_range in availability[current_day]:
-            start_time, _ = map(str.strip, time_range.split("-"))
-            if current_time < start_time:
-                next_availability = f"The next available time is today at {start_time}."
+        # If no slot found today, check next day
+        for i in range(1, 7):
+            next_day_index = (DAYS_OF_WEEK.index(current_day) + i) % 7
+            next_day = DAYS_OF_WEEK[next_day_index]
+            for time_range in availability.get(next_day, []):
+                next_time = time_range.split("-")[0].strip()
+                next_availability = f"The next available time is on {next_day.capitalize()} at {next_time}."
                 return {"is_available": False, "next_availability": next_availability}
-        next_day_index = (DAYS_OF_WEEK.index(current_day) + 1) % 7
-        next_day = DAYS_OF_WEEK[next_day_index]
-        if next_day in availability:
-            next_time = availability[next_day][0].split("-")[0].strip()
-            next_availability = (
-                f"The next available time is on {next_day.capitalize()} at {next_time}."
-            )
-            return {"is_available": False, "next_availability": next_availability}
-        else:
-            return {
-                "is_available": False,
-                "next_availability": "No availability found.",
-            }
+        return {"is_available": False, "next_availability": "No availability found."}
     else:
+        # Doctor not found or not scheduled
         days_of_week = DAYS_OF_WEEK
         current_day_index = days_of_week.index(current_day)
         for i in range(1, 7):
             next_day_index = (current_day_index + i) % 7
             next_day = days_of_week[next_day_index]
-            if next_day in availability:
-                next_time = availability[next_day][0].split("-")[0].strip()
+            for time_range in availability.get(next_day, []):
+                next_time = time_range.split("-")[0].strip()
                 next_availability = f"The next available time is on {next_day.capitalize()} at {next_time}."
                 return {"is_available": False, "next_availability": next_availability}
         return {"is_available": False, "next_availability": "No availability found."}
@@ -372,9 +411,11 @@ def home():
 def doctor_availability_endpoint():
     doctor_id = request.args.get("doctor_id")
     if doctor_id:
-        availability = doctor_availability.get(doctor_id.lower(), {})
+        availability = doctor_availability.get("dr_" + doctor_id.lower(), {})
         if availability:
-            return jsonify({"status": "success", "data": {doctor_id: availability}})
+            return jsonify(
+                {"status": "success", "data": {"dr_" + doctor_id.lower(): availability}}
+            )
         return jsonify({"status": "error", "message": "Doctor not found"}), 404
     return jsonify({"status": "success", "data": doctor_availability})
 
@@ -447,6 +488,9 @@ def open_browser_after_delay(url, delay=1):
 
 
 def open_application(command, original_command_text):
+    """
+    Your main logic for deciding what to do based on recognized commands.
+    """
     global pending_action
     response = ""
     command = command.strip().lower()
@@ -454,7 +498,7 @@ def open_application(command, original_command_text):
     logger.debug(f"open_application called with command: {command}")
     logger.debug(f"Original command text: {original_command_text}")
 
-    # Pending actions that require yes/no
+    # =================== Handling user confirmations (yes/no) ===================
     if pending_action and pending_action.startswith("go_to_"):
         if is_affirmative(original_command_text):
             location = pending_action[len("go_to_") :]
@@ -491,9 +535,12 @@ def open_application(command, original_command_text):
             response = "Okay, feel free to ask if you need any assistance. Goodbye!"
             pending_action = None
         else:
+            response = "I'm sorry, I didn't catch that. Please say yes or no."
             pending_action = None
             logger.debug("User provided a direct request instead of YES/NO.")
-            return open_application(command, original_command_text)
+            response_queue.put(response)
+            logger.info(f"Responding: {response}")
+            return jsonify({"response": response})
         response_queue.put(response)
         logger.info(f"Responding: {response}")
         return jsonify({"response": response})
@@ -505,16 +552,21 @@ def open_application(command, original_command_text):
             )
             availability = get_doctor_availability_data(doctor_id)
             if availability["is_available"]:
-                response = f"{doctor_id.replace('_', ' ').title()} is available now. Would you like me to guide you to their office?"
+                response = (
+                    f"{doctor_id.replace('_', ' ').title()} is available now. "
+                    "Would you like me to guide you to their office?"
+                )
                 with pending_action_lock:
                     pending_action = f"go_to_{doctor_id}"
-                logger.info(f"Responding: {response}")
             else:
-                response = f"{doctor_id.replace('_', ' ').title()} is not available now. {availability['next_availability']} Would you like help with something else?"
+                response = (
+                    f"{doctor_id.replace('_', ' ').title()} is not available now. "
+                    f"{availability['next_availability']} Would you like help with something else?"
+                )
                 with pending_action_lock:
                     pending_action = "ask_if_help_needed"
-                logger.info(f"Responding: {response}")
             response_queue.put(response)
+            logger.info(f"Responding: {response}")
             return jsonify({"response": response})
         elif is_negative(original_command_text):
             response = "Okay, let me know if you need anything else."
@@ -541,7 +593,10 @@ def open_application(command, original_command_text):
         if day_in_text:
             opening_times = get_room_opening_times(room, day_in_text)
             if opening_times:
-                response = f"The {room.replace('_', ' ')} opens at {opening_times['opens_at']} and closes at {opening_times['closes_at']} on {day_in_text.capitalize()}."
+                response = (
+                    f"The {room.replace('_', ' ')} opens at {opening_times['opens_at']} "
+                    f"and closes at {opening_times['closes_at']} on {day_in_text.capitalize()}."
+                )
             else:
                 response = f"The {room.replace('_', ' ')} is closed on {day_in_text.capitalize()}."
             response += " Is there anything else I can assist you with?"
@@ -571,7 +626,10 @@ def open_application(command, original_command_text):
             schedule = get_doctor_schedule(doctor, day_in_text)
             if schedule:
                 schedule_str = ", ".join(schedule)
-                response = f"{doctor.replace('_', ' ').title()} is available at the following times on {day_in_text.capitalize()}: {schedule_str}."
+                response = (
+                    f"{doctor.replace('_', ' ').title()} is available at the following times "
+                    f"on {day_in_text.capitalize()}: {schedule_str}."
+                )
             else:
                 response = f"{doctor.replace('_', ' ').title()} is not available on {day_in_text.capitalize()}."
             response += " Is there anything else I can assist you with?"
@@ -587,7 +645,7 @@ def open_application(command, original_command_text):
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
 
-    # No pending action requiring yes/no, proceed normally
+    # =================== No pending action (handle new commands) ===================
     command_normalized = command.replace("dr ", "").replace("doctor ", "").strip()
     availability_query_match = re.search(
         r"(is|are|when|what time)(.*?)(open|close|available)", command_normalized
@@ -599,12 +657,6 @@ def open_application(command, original_command_text):
         subject_normalized = subject.replace("dr ", "").replace("doctor ", "").strip()
         day_in_text = extract_day_from_text(command_normalized)
         logger.debug(f"Day extracted from query: {day_in_text}")
-
-        if "now" in command_normalized:
-            day_in_text = datetime.now().strftime("%A").lower()
-            logger.debug(
-                f"'Now' detected, setting day_in_text to current day: {day_in_text}"
-            )
 
         # Check if subject is a room
         found_room = False
@@ -618,7 +670,10 @@ def open_application(command, original_command_text):
                     if day_in_text:
                         opening_times = get_room_opening_times(rm, day_in_text)
                         if opening_times:
-                            response = f"The {rm.replace('_', ' ')} opens at {opening_times['opens_at']} and closes at {opening_times['closes_at']} on {day_in_text.capitalize()}."
+                            response = (
+                                f"The {rm.replace('_', ' ')} opens at {opening_times['opens_at']} "
+                                f"and closes at {opening_times['closes_at']} on {day_in_text.capitalize()}."
+                            )
                         else:
                             response = f"The {rm.replace('_', ' ')} is closed on {day_in_text.capitalize()}."
                         response += " Is there anything else I can assist you with?"
@@ -628,8 +683,7 @@ def open_application(command, original_command_text):
                         return jsonify({"response": response})
                     else:
                         response = "Do you need the opening times for a specific day?"
-                        with pending_action_lock:
-                            pending_action = f"ask_for_day_room_{rm}"
+                        pending_action = f"ask_for_day_room_{rm}"
                         response_queue.put(response)
                         logger.info(f"Responding: {response}")
                         return jsonify({"response": response})
@@ -640,38 +694,15 @@ def open_application(command, original_command_text):
             # Check if subject is a doctor
             for doc in VALID_DOCTORS:
                 doctor_lower = doc.replace("_", " ").lower()
-                doc_norm = (
+                doctor_normalized = (
                     doctor_lower.replace("dr ", "").replace("doctor ", "").strip()
                 )
-                if doc_norm == subject_normalized or doc_norm in subject_normalized:
-                    if day_in_text:
-                        schedule = get_doctor_schedule(doc, day_in_text)
-                        if schedule:
-                            schedule_str = ", ".join(schedule)
-                            response = f"{doc.replace('_', ' ').title()} is available at the following times on {day_in_text.capitalize()}: {schedule_str}."
-                        else:
-                            response = f"{doc.replace('_', ' ').title()} is not available on {day_in_text.capitalize()}."
-                        response += " Is there anything else I can assist you with?"
-                        pending_action = "ask_if_help_needed"
-                        response_queue.put(response)
-                        logger.info(f"Responding: {response}")
-                        return jsonify({"response": response})
-                    else:
-                        if not day_in_text:
-                            day_in_text = datetime.now().strftime("%A").lower()
-                        schedule = get_doctor_schedule(doc, day_in_text)
-                        if schedule:
-                            schedule_str = ", ".join(schedule)
-                            response = f"{doc.replace('_', ' ').title()} is available at the following times today: {schedule_str}."
-                        else:
-                            response = f"{doc.replace('_', ' ').title()} is not available today."
-                        response += " Is there anything else I can assist you with?"
-                        pending_action = "ask_if_help_needed"
-                        response_queue.put(response)
-                        logger.info(f"Responding: {response}")
-                        return jsonify({"response": response})
+                if doctor_normalized in command_normalized:
+                    doctor = doc
+                    logger.debug(f"Identified doctor: {doctor}")
+                    break
 
-    # Identify rooms or doctors normally
+    # Identify rooms or doctors for navigation
     room = None
     doctor = None
 
@@ -836,7 +867,10 @@ def open_application(command, original_command_text):
                 schedule = get_doctor_schedule(doctor, day_in_text)
                 if schedule:
                     schedule_str = ", ".join(schedule)
-                    response = f"{doctor.replace('_', ' ').title()} is available at the following times on {day_in_text.capitalize()}: {schedule_str}."
+                    response = (
+                        f"{doctor.replace('_', ' ').title()} is available at the following times "
+                        f"on {day_in_text.capitalize()}: {schedule_str}."
+                    )
                 else:
                     response = f"{doctor.replace('_', ' ').title()} is not available on {day_in_text.capitalize()}."
                 response += " Is there anything else I can assist you with?"
@@ -847,7 +881,10 @@ def open_application(command, original_command_text):
             else:
                 availability = get_doctor_availability_data(doctor)
                 if availability["is_available"]:
-                    response = f"{doctor.replace('_', ' ').title()} is available now. Would you like me to guide you to their office?"
+                    response = (
+                        f"{doctor.replace('_', ' ').title()} is available now. "
+                        "Would you like me to guide you to their office?"
+                    )
                     with pending_action_lock:
                         pending_action = f"go_to_{doctor}"
                     logger.info(f"Responding: {response}")
@@ -875,6 +912,14 @@ def open_application(command, original_command_text):
 
 
 class Wall:
+    """
+    A 'Wall' is represented by a pygame.Rect and a mask for collision.
+    We'll create two types of walls:
+     1) The area outside the 'outer corridor'.
+     2) The area inside the 'inner boundary'.
+    Anything outside the outer boundary or inside the inner boundary is a 'wall'.
+    """
+
     def __init__(self, rect):
         self.rect = rect
         self.mask = self.create_mask()
@@ -886,12 +931,66 @@ class Wall:
         wall_surface.fill(BLACK)
         return pygame.mask.from_surface(wall_surface)
 
-    def draw(self, surface):
-        pygame.draw.rect(surface, BLACK, self.rect)
+    def draw(self, surface, camera, color=BLACK):
+        # Apply camera transformation to wall rectangle
+        transformed_rect = pygame.Rect(
+            camera.apply((self.rect.left, self.rect.top)),
+            (int(self.rect.width * camera.zoom), int(self.rect.height * camera.zoom)),
+        )
+        pygame.draw.rect(surface, color, transformed_rect)
+
+
+class Camera:
+    def __init__(self, width, height, zoom=1.0):
+        self.width = width
+        self.height = height
+        self.zoom = zoom
+        self.position = pygame.math.Vector2(0, 0)  # Camera center in world coordinates
+
+    def apply(self, pos):
+        """
+        Transforms world coordinates to screen coordinates.
+        """
+        x, y = pos
+        screen_x = (x - self.position.x) * self.zoom + self.width / 2
+        screen_y = (y - self.position.y) * self.zoom + self.height / 2
+        return (int(screen_x), int(screen_y))
+
+    def update(self, target_pos):
+        """
+        Update camera position to follow the target, with boundary constraints.
+        """
+        new_pos = pygame.math.Vector2(target_pos)
+
+        # Define boundaries based on corridor size
+        corridor_left = PAD
+        corridor_right = PAD + int(real_width * SCALE)
+        corridor_top = PAD
+        corridor_bottom = PAD + int(real_height * SCALE)
+
+        # Calculate camera boundaries (half screen size divided by zoom)
+        half_width = self.width / 2 / self.zoom
+        half_height = self.height / 2 / self.zoom
+
+        # Clamp camera position to prevent viewing outside the corridor
+        new_pos.x = max(
+            corridor_left + half_width, min(new_pos.x, corridor_right - half_width)
+        )
+        new_pos.y = max(
+            corridor_top + half_height, min(new_pos.y, corridor_bottom - half_height)
+        )
+
+        self.position = new_pos
+
+    def set_zoom(self, new_zoom):
+        """
+        Set a new zoom level.
+        """
+        self.zoom = new_zoom
 
 
 class CarRobot:
-    def __init__(self, x, y, waypoints, waypoint_names, walls, prompt_queue):
+    def __init__(self, x, y, waypoints, waypoint_names, walls, prompt_queue, camera):
         self.start_x = x
         self.start_y = y
         self.x = x
@@ -910,8 +1009,8 @@ class CarRobot:
         self.state_reason = "Waiting for waypoint"
         self.is_returning_to_start = False
         self.prompt_queue = prompt_queue
+        self.camera = camera  # Reference to the camera
         self.sensors = []
-        self.create_sensors()
         self.path = []
         self.arduino_obstacle_detected = False
         self.obstacle_response_sent = False
@@ -921,12 +1020,17 @@ class CarRobot:
             for name, position in zip(self.waypoint_names, self.waypoints)
         }
         logger.info(f"Waypoint Dictionary Initialized: {self.waypoint_dict}")
+        self.create_sensors()  # Now called after setting self.camera
 
     def load_image(self):
         try:
-            self.original_image = pygame.image.load(CAR_IMAGE_PATH)
-            self.original_image = pygame.transform.scale(self.original_image, CAR_SIZE)
-            logger.debug("Car image loaded successfully.")
+            # If you have a specific image, load and scale it.
+            # For simulation purposes, we'll represent the robot as a simple circle.
+            # Uncomment the following lines if you have a car image.
+            # self.original_image = pygame.image.load(CAR_IMAGE_PATH)
+            # self.original_image = pygame.transform.scale(self.original_image, (ROBOT_VISUAL_DIAMETER, ROBOT_VISUAL_DIAMETER))
+            # self.image = self.original_image
+            pass
         except pygame.error as e:
             logger.error(f"Failed to load car image: {e}")
             sys.exit()
@@ -935,9 +1039,18 @@ class CarRobot:
         self.sensors = []
         for angle_offset in SENSOR_ANGLES:
             sensor_angle = (self.angle + angle_offset) % 360
-            sensor_end_x = self.x + SENSOR_LENGTH * math.cos(math.radians(sensor_angle))
-            sensor_end_y = self.y - SENSOR_LENGTH * math.sin(math.radians(sensor_angle))
+            # Adjust sensor length based on zoom
+            dynamic_sensor_length = SENSOR_LENGTH_REAL * self.camera.zoom * SCALE
+            sensor_end_x = self.x + dynamic_sensor_length * math.cos(
+                math.radians(sensor_angle)
+            )
+            sensor_end_y = self.y - dynamic_sensor_length * math.sin(
+                math.radians(sensor_angle)
+            )
             self.sensors.append((sensor_angle, (sensor_end_x, sensor_end_y)))
+            logger.debug(
+                f"Sensor at angle {sensor_angle}: End point ({sensor_end_x}, {sensor_end_y})"
+            )
 
     def update_sensors(self):
         self.create_sensors()
@@ -976,6 +1089,9 @@ class CarRobot:
                 )
 
     def line_rect_intersect(self, line, rect):
+        """
+        Check if a sensor line intersects a rectangular wall boundary.
+        """
         rect_lines = [
             ((rect.left, rect.top), (rect.right, rect.top)),
             ((rect.right, rect.top), (rect.right, rect.bottom)),
@@ -1014,7 +1130,6 @@ class CarRobot:
             self.angle = original_angle
             self.update_sensors()
             self.state_reason = "Cannot rotate due to collision"
-            self.moving = False
 
     def rotate_towards_target(self, target_angle):
         angle_diff = (target_angle - self.angle + 360) % 360
@@ -1073,21 +1188,21 @@ class CarRobot:
         return None
 
     def update_mask(self):
-        rotated_image = pygame.transform.rotate(self.original_image, self.angle)
-        rotated_rect = rotated_image.get_rect(center=(self.x, self.y))
-        self.car_mask = pygame.mask.from_surface(rotated_image)
-        return rotated_image, rotated_rect
+        # If using an image, rotate it here
+        # For simplicity, we'll represent the robot as a circle
+        # So no mask update is needed
+        return None, None
 
     def check_collision(self, new_x, new_y):
         original_x, original_y = self.x, self.y
         self.x, self.y = new_x, new_y
-        rotated_image, rect = self.update_mask()
-        car_mask = pygame.mask.from_surface(rotated_image)
         collision = False
         for wall in self.walls:
-            offset = (int(wall.rect.x - rect.x), int(wall.rect.y - rect.y))
-            overlap = car_mask.overlap(wall.mask, offset)
-            if overlap:
+            # Calculate distance between robot center and wall rect
+            closest_x = max(wall.rect.left, min(self.x, wall.rect.right))
+            closest_y = max(wall.rect.top, min(self.y, wall.rect.bottom))
+            distance = math.hypot(self.x - closest_x, self.y - closest_y)
+            if distance < ROBOT_DIAMETER_SCALED / 2:
                 logger.warning(f"Collision with wall at position: {wall.rect}")
                 collision = True
                 break
@@ -1128,6 +1243,7 @@ class CarRobot:
             target_distance = math.hypot(
                 self.current_target[0] - self.x, self.current_target[1] - self.y
             )
+            # If we're already very close to the target, ignore sensors
             if target_distance < self.threshold * 2:
                 obstacles = []
             if obstacles:
@@ -1161,44 +1277,102 @@ class CarRobot:
                 self.obstacle_response_sent = False
 
     def draw_status(self, surface):
-        font = pygame.font.SysFont(None, 24)
-        status = "MOVING" if self.moving else "STOPPED"
-        status_text = font.render(f"Robot Status: {status}", True, BLACK)
-        reason_text = font.render(f"Reason: {self.state_reason}", True, BLACK)
-        status_width = status_text.get_width()
-        margin = 20
-        surface.blit(status_text, (10, HEIGHT + 10))
-        surface.blit(reason_text, (10 + status_width + margin, HEIGHT + 10))
+        font = pygame.font.SysFont(None, 28)  # Adjusted font size for visibility
 
-    def draw(self, surface):
-        rotated_image, rect = self.update_mask()
-        surface.blit(rotated_image, rect.topleft)
+        status = "MOVING" if self.moving else "STOPPED"
+        status_text = font.render(f"Robot Status: {status}", True, BLUE)
+
+        reason_text = font.render(f"Reason: {self.state_reason}", True, BLUE)
+
+        zoom_text = font.render(f"Zoom: {self.camera.zoom:.1f}x", True, RED_COLOR)
+
+        # Define positions within BUTTON_AREA
+        x, y = 20, HEIGHT + 20  # Start at (20, 470)
+        margin = 30  # Increased margin for better spacing
+
+        # Blit status texts horizontally
+        surface.blit(status_text, (x, y))
+        surface.blit(reason_text, (x + status_text.get_width() + 40, y))
+        surface.blit(
+            zoom_text,
+            (x + status_text.get_width() + 40 + reason_text.get_width() + 40, y),
+        )
+
+        # Draw zoom level bar below the texts
+        self.draw_zoom_bar(surface)
+
+    def draw_zoom_bar(self, surface):
+        # Define zoom bar dimensions
+        bar_width, bar_height = 200, 20
+        x, y = 20, HEIGHT + 70  # Position within BUTTON_AREA=150
+
+        # Draw border
+        pygame.draw.rect(surface, BLACK, (x, y, bar_width, bar_height), 2)
+
+        # Calculate filled width based on zoom level
+        # Assuming zoom levels between 0.5x and 5.0x
+        min_zoom, max_zoom = 0.5, 5.0
+        zoom_normalized = (self.camera.zoom - min_zoom) / (max_zoom - min_zoom)
+        zoom_normalized = max(0.0, min(1.0, zoom_normalized))  # Clamp between 0 and 1
+        filled_width = int(bar_width * zoom_normalized)
+
+        # Draw filled part
+        pygame.draw.rect(
+            surface, RED_COLOR, (x + 1, y + 1, filled_width - 2, bar_height - 2)
+        )
+
+        # Draw zoom text above the bar
+        font = pygame.font.SysFont(None, 24)
+        zoom_text = font.render(f"Zoom: {self.camera.zoom:.1f}x", True, BLACK)
+        surface.blit(zoom_text, (x, y - 30))
+
+    def draw(self, surface, camera):
+        # Draw the robot as a circle for simplicity
+        robot_screen_pos = camera.apply((self.x, self.y))
+        pygame.draw.circle(
+            surface,
+            GREEN if self.moving else RED_COLOR,
+            robot_screen_pos,
+            ROBOT_VISUAL_DIAMETER // 2,
+        )
+        # Orientation line
+        end_x = self.x + (ROBOT_VISUAL_DIAMETER // 2) * math.cos(
+            math.radians(self.angle)
+        )
+        end_y = self.y - (ROBOT_VISUAL_DIAMETER // 2) * math.sin(
+            math.radians(self.angle)
+        )
+        end_screen_pos = camera.apply((end_x, end_y))
+        pygame.draw.line(surface, BLACK, robot_screen_pos, end_screen_pos, 2)
+
+        # Draw sensors
         sensor_data = self.check_sensors()
         for (sensor_angle, (sensor_end_x, sensor_end_y)), (
             angle_check,
             obstacle_detected,
         ) in zip(self.sensors, sensor_data):
             if self.arduino_obstacle_detected:
-                color = RED
+                color = RED_COLOR
             else:
-                color = RED if obstacle_detected else GREEN
-            pygame.draw.line(
-                surface, color, (self.x, self.y), (sensor_end_x, sensor_end_y), 2
-            )
-            pygame.draw.circle(
-                surface, color, (int(sensor_end_x), int(sensor_end_y)), 3
-            )
+                color = RED_COLOR if obstacle_detected else GREEN
+            sensor_end_screen = camera.apply((sensor_end_x, sensor_end_y))
+            pygame.draw.line(surface, color, robot_screen_pos, sensor_end_screen, 2)
+            pygame.draw.circle(surface, color, sensor_end_screen, 3)
+
+        # Draw waypoints
         for idx, (wp_x, wp_y) in enumerate(self.waypoints):
             color = (
                 GREEN
                 if self.waypoint_names[idx] == self.current_location_name
                 else BLUE
             )
-            pygame.draw.circle(surface, color, (int(wp_x), int(wp_y)), 8)
+            wp_screen_pos = camera.apply((wp_x, wp_y))
+            pygame.draw.circle(surface, color, wp_screen_pos, 8)
             font = pygame.font.SysFont(None, 24)
             img = font.render(self.waypoint_names[idx], True, BLACK)
-            surface.blit(img, (wp_x + 10, wp_y - 10))
+            surface.blit(img, (wp_screen_pos[0] + 10, wp_screen_pos[1] - 10))
 
+    # Example path dictionary
     waypoint_paths = {
         ("Start", "M215"): ["M215"],
         ("M215", "M216"): ["M216"],
@@ -1290,8 +1464,18 @@ class Game:
         self.screen = pygame.display.set_mode((WIDTH, TOTAL_HEIGHT))
         pygame.display.set_caption("GuideBot Simulation")
         self.clock = pygame.time.Clock()
-        self.walls = self.create_walls()
+
+        # Initialize Camera with adjusted zoom
+        self.camera = Camera(
+            WIDTH, HEIGHT, zoom=2.0
+        )  # Adjusted initial zoom for better view
+
+        # Create corridor walls based on real-world corridor dimensions
+        self.walls = self.create_corridor_walls()
+
+        # Define waypoints in real-world coordinates and scale them
         self.define_waypoints()
+
         self.car = CarRobot(
             self.waypoints[0][0],
             self.waypoints[0][1],
@@ -1299,46 +1483,186 @@ class Game:
             self.waypoint_names,
             self.walls,
             prompt_queue,
+            self.camera,  # Pass camera reference
         )
-        self.car.waypoint_dict = self.waypoint_dict
         self.serial_reader = SerialReader(SERIAL_PORT, BAUD_RATE, self.car, self)
         self.serial_reader.start()
         self.previous_moving_state = False
 
-    def create_walls(self):
-        wall_rects = [
-            pygame.Rect(50, 50, 700, 50),
-            pygame.Rect(50, 500, 700, 50),
-            pygame.Rect(50, 50, 50, 500),
-            pygame.Rect(720, 50, 50, 500),
-            pygame.Rect(350, 250, 100, 100),
-            pygame.Rect(50, 300, 300, 10),
+        # For drawing corridor outlines
+        self.outer_polygon = None
+        self.inner_polygon = None
+
+        # Compute scaled polygons for drawing
+        self.compute_corridor_polygons()
+
+    def create_corridor_walls(self):
+        """
+        Creates a ring-shaped walkable area:
+          - Outer boundary: (-2.7, 0) to (42.8, 23.5)
+          - Inner boundary: (0, 0) to (39.3, 20)
+        Anything outside the outer boundary or inside the inner boundary is a 'wall'.
+        """
+        walls = []
+
+        # Scaling functions
+        def scale_x(rx):
+            return PAD + int((rx - (-2.7)) * SCALE)
+
+        def scale_y(ry):
+            # Invert y-axis for Pygame
+            return PAD + int((real_height - ry) * SCALE)
+
+        # Corrected outer corridor rectangle with positive height
+        outer_rect = pygame.Rect(
+            scale_x(-2.7),
+            PAD,  # Set y to PAD to ensure positive height
+            int((42.8 - (-2.7)) * SCALE),
+            int(23.5 * SCALE),  # Positive height
+        )
+
+        # Corrected inner corridor rectangle with positive height
+        inner_rect = pygame.Rect(
+            scale_x(0),
+            scale_y(20),  # Directly set y without subtraction
+            int((39.3 - 0) * SCALE),
+            int(20 * SCALE),  # Positive height
+        )
+
+        # Debugging: Log the rect dimensions
+        logger.debug(f"Outer Rect: {outer_rect}")
+        logger.debug(f"Inner Rect: {inner_rect}")
+
+        # 1) Outer walls: Everything outside the outer_rect
+        # We'll split it into four rectangles: top, bottom, left, right
+        top_wall = Wall(pygame.Rect(0, 0, WIDTH, outer_rect.top))
+        bottom_wall = Wall(
+            pygame.Rect(0, outer_rect.bottom, WIDTH, HEIGHT - outer_rect.bottom)
+        )
+        left_wall = Wall(pygame.Rect(0, PAD, outer_rect.left, outer_rect.height))
+        right_wall = Wall(
+            pygame.Rect(
+                outer_rect.right, PAD, WIDTH - outer_rect.right, outer_rect.height
+            )
+        )
+
+        # 2) Inner walls: The inner_rect itself
+        inner_wall = Wall(inner_rect)
+
+        # Add them to the walls list
+        walls.extend([top_wall, bottom_wall, left_wall, right_wall, inner_wall])
+
+        # Additional Debugging: Verify all walls have positive dimensions
+        for wall in walls:
+            rect = wall.rect
+            if rect.width <= 0 or rect.height <= 0:
+                logger.error(f"Invalid wall dimensions: {rect}")
+            else:
+                logger.debug(f"Valid wall created: {rect}")
+
+        return walls
+
+    def compute_corridor_polygons(self):
+        """
+        For drawing only: compute lists of (x,y) points in screen coords
+        for the outer boundary and inner boundary polygons.
+        """
+        self.outer_polygon = [
+            (scale_x, scale_y)
+            for (scale_x, scale_y) in [
+                (
+                    PAD + int((-2.7 - (-2.7)) * SCALE),
+                    PAD + int((real_height - 0) * SCALE),
+                ),
+                (
+                    PAD + int((42.8 - (-2.7)) * SCALE),
+                    PAD + int((real_height - 0) * SCALE),
+                ),
+                (
+                    PAD + int((42.8 - (-2.7)) * SCALE),
+                    PAD + int((real_height - 23.5) * SCALE),
+                ),
+                (
+                    PAD + int((-2.7 - (-2.7)) * SCALE),
+                    PAD + int((real_height - 23.5) * SCALE),
+                ),
+            ]
         ]
-        return [Wall(rect) for rect in wall_rects]
+
+        self.inner_polygon = [
+            (scale_x, scale_y)
+            for (scale_x, scale_y) in [
+                (PAD + int((0 - (-2.7)) * SCALE), PAD + int((real_height - 0) * SCALE)),
+                (
+                    PAD + int((39.3 - (-2.7)) * SCALE),
+                    PAD + int((real_height - 0) * SCALE),
+                ),
+                (
+                    PAD + int((39.3 - (-2.7)) * SCALE),
+                    PAD + int((real_height - 20) * SCALE),
+                ),
+                (
+                    PAD + int((0 - (-2.7)) * SCALE),
+                    PAD + int((real_height - 20) * SCALE),
+                ),
+            ]
+        ]
 
     def define_waypoints(self):
-        self.waypoints = [
-            (150, 150),
-            (600, 150),
-            (600, 450),
-            (150, 450),
-            (500, 300),
+        """
+        Define waypoints in real-world coordinates, ensuring they lie within the corridor.
+        Then scale them to screen coordinates.
+        """
+        # Define waypoints in real-world coordinates (meters)
+        # Ensure they are between inner and outer boundaries
+        waypoints_real = [
+            (5, 22),  # Start (y > 20 to be outside inner_rect)
+            (10, 21),  # M215
+            (20, 22),  # M216
+            (30, 21),  # Admission
+            (35, 22),  # dr_nada
         ]
         self.waypoint_names = ["Start", "M215", "M216", "Admission", "dr_nada"]
+
+        # Scaling functions
+        def scale_x(rx):
+            return PAD + int((rx - (-2.7)) * SCALE)
+
+        def scale_y(ry):
+            # Invert y-axis for Pygame
+            return PAD + int((real_height - ry) * SCALE)
+
+        # Scale waypoints
+        self.waypoints = [(scale_x(rx), scale_y(ry)) for (rx, ry) in waypoints_real]
+
         self.waypoint_dict = {
             name: position
             for name, position in zip(self.waypoint_names, self.waypoints)
         }
 
-    def draw_walls(self):
+        # Debugging: Log the scaled waypoints
+        for name, pos in self.waypoint_dict.items():
+            logger.debug(f"Waypoint {name}: {pos}")
+
+    def draw_walls(self, camera):
         for wall in self.walls:
-            wall.draw(self.screen)
+            wall.draw(self.screen, camera, color=BLACK)
+
+        # Draw corridor outlines just for visual reference:
+        if self.outer_polygon:
+            transformed_outer = [camera.apply(pos) for pos in self.outer_polygon]
+            pygame.draw.polygon(self.screen, BLUE, transformed_outer, 3)
+        if self.inner_polygon:
+            transformed_inner = [camera.apply(pos) for pos in self.inner_polygon]
+            pygame.draw.polygon(self.screen, RED_COLOR, transformed_inner, 3)
 
     def choose_waypoint(self, mouse_x, mouse_y):
         closest_index = None
         min_distance = float("inf")
         for idx, (wp_x, wp_y) in enumerate(self.waypoints):
-            distance = math.hypot(mouse_x - wp_x, mouse_y - wp_y)
+            # Apply camera to get screen position
+            wp_screen_x, wp_screen_y = self.camera.apply((wp_x, wp_y))
+            distance = math.hypot(mouse_x - wp_screen_x, mouse_y - wp_screen_y)
             if distance < min_distance and distance < 50:
                 closest_index = idx
                 min_distance = distance
@@ -1380,14 +1704,12 @@ class Game:
                             self.send_command("START_SERVO")
                         else:
                             logger.warning(f"Unknown location: {location_normalized}")
-                    else:
-                        logger.warning(f"Unknown location: {location_normalized}")
-                elif command == "user_choice_done":
-                    self.car.return_to_start()
-                    response_queue.put("Goodbye, going to start point.")
-                elif command == "user_choice_another":
-                    self.car.state_reason = "Waiting for new command"
-                    response_queue.put("How may I help you further")
+                    elif command == "user_choice_done":
+                        self.car.return_to_start()
+                        response_queue.put("Goodbye, going to start point.")
+                    elif command == "user_choice_another":
+                        self.car.state_reason = "Waiting for new command"
+                        response_queue.put("How may I help you further")
         except queue.Empty:
             pass
 
@@ -1434,8 +1756,28 @@ class Game:
                     mouse_x, mouse_y = pygame.mouse.get_pos()
                     if mouse_y < HEIGHT:
                         self.choose_waypoint(mouse_x, mouse_y)
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
+                        # Zoom in with upper limit
+                        if self.camera.zoom < 5.0:
+                            self.camera.zoom += 0.5  # Increment zoom
+                            logger.debug(f"Zoom increased to {self.camera.zoom}")
+                    elif (
+                        event.key == pygame.K_MINUS or event.key == pygame.K_UNDERSCORE
+                    ):
+                        # Zoom out with lower limit
+                        if self.camera.zoom > 0.5:
+                            self.camera.zoom = max(
+                                0.5, self.camera.zoom - 0.5
+                            )  # Decrement zoom with a minimum limit
+                            logger.debug(f"Zoom decreased to {self.camera.zoom}")
+
             self.process_commands()
             self.process_responses()
+
+            # Update camera to follow the robot
+            self.camera.update((self.car.x, self.car.y))
+
             self.car.update()
             current_moving_state = self.car.moving
             if current_moving_state != self.previous_moving_state:
@@ -1450,16 +1792,37 @@ class Game:
                         "Command 'STOP_SERVO' sent due to state transition to STOPPED."
                     )
             self.previous_moving_state = current_moving_state
-            self.screen.fill(WHITE)
-            self.draw_walls()
-            self.car.draw(self.screen)
+
+            # Clear the main simulation area (top 600x450) with white background
+            simulation_rect = pygame.Rect(0, 0, WIDTH, HEIGHT)
+            self.screen.fill(WHITE, simulation_rect)
+
+            # Draw corridor walls and polygons
+            self.draw_walls(self.camera)
+            # Draw the robot
+            self.car.draw(self.screen, self.camera)
+            # Draw status text and zoom indicators in the bottom area
             self.car.draw_status(self.screen)
+
+            # Draw the bottom status area with a white background
+            bottom_rect = pygame.Rect(0, HEIGHT, WIDTH, BUTTON_AREA_HEIGHT)
+            pygame.draw.rect(self.screen, WHITE, bottom_rect)
+
+            # Ensure status texts are drawn on top of the white background
+            self.car.draw_status(self.screen)
+
             pygame.display.flip()
             self.clock.tick(FPS)
+
         self.serial_reader.stop()
         self.serial_reader.join()
         pygame.quit()
         sys.exit()
+
+
+def open_browser_after_delay(url, delay=1):
+    time.sleep(delay)
+    webbrowser.open(url)
 
 
 if __name__ == "__main__":
