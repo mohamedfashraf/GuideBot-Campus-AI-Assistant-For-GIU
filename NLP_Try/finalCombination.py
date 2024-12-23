@@ -71,20 +71,20 @@ def compute_scale(width_m, height_m, screen_width, screen_height, pad):
 real_width = 42.8 + 2.7  # Outer width in meters = 45.5m
 real_height = 23.5  # Outer height in meters
 
-SCALE = compute_scale(real_width, real_height, WIDTH, HEIGHT, PAD)
+SCALE = 10  # pixels per meter (Adjusted for better visibility)
 
 # Robot real-life diameter
-ROBOT_DIAMETER_REAL = 0.03  # meters
+ROBOT_DIAMETER_REAL = 0.3  # meters (30 cm)
 
 # Scaled robot diameter (for collision detection)
-ROBOT_DIAMETER_SCALED = ROBOT_DIAMETER_REAL * SCALE  # e.g., ~1.35 pixels
+ROBOT_DIAMETER_SCALED = ROBOT_DIAMETER_REAL * SCALE  # 0.3m * 10 = 3 pixels
 
 # Minimum visual size for robot in Pygame
-ROBOT_VISUAL_DIAMETER = max(10, int(ROBOT_DIAMETER_SCALED))  # At least 10 pixels
+ROBOT_VISUAL_DIAMETER = max(20, int(ROBOT_DIAMETER_SCALED))  # At least 20 pixels
 
-# Further Adjusted Car Speed
-CAR_SPEED = 0.5  # Reduced from 1 to 0.5 for slower movement
-CAR_ROTATION_SPEED = 3  # Optional: Reduced rotation speed for smoother turns
+# Adjusted Car Speed
+CAR_SPEED = 0.56  # meters per second (2 km/h)
+CAR_ROTATION_SPEED = 90  # Degrees per second
 
 # Sensor length definitions
 SENSOR_LENGTH_REAL = 0.15  # 15 cm in meters
@@ -93,7 +93,7 @@ SENSOR_LENGTH = max(
 )  # pixels, minimum 15 for visibility
 
 SENSOR_ANGLES = [-30, 0, 30]
-WAYPOINT_THRESHOLD = 20
+WAYPOINT_THRESHOLD = 2  # pixels
 FPS = 60
 
 SERIAL_PORT = "COM5"  # Update this to your Arduino's serial port
@@ -129,11 +129,7 @@ all_rooms = set()
 for b_data in VALID_BUILDINGS.values():
     all_rooms.update(b_data["rooms"])
 
-VALID_DOCTORS = {
-    "dr_nada",
-    "dr_slim",
-    "dr_omar",
-}
+VALID_DOCTORS = {"dr_nada", "dr_slim", "dr_omar"}
 
 DAYS_OF_WEEK = [
     "monday",
@@ -489,7 +485,7 @@ def open_browser_after_delay(url, delay=1):
 
 def open_application(command, original_command_text):
     """
-    Your main logic for deciding what to do based on recognized commands.
+    Main logic for handling commands.
     """
     global pending_action
     response = ""
@@ -645,7 +641,7 @@ def open_application(command, original_command_text):
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
 
-    # =================== No pending action (handle new commands) ===================
+    # =================== Handling Availability Queries ===================
     command_normalized = command.replace("dr ", "").replace("doctor ", "").strip()
     availability_query_match = re.search(
         r"(is|are|when|what time)(.*?)(open|close|available)", command_normalized
@@ -687,11 +683,9 @@ def open_application(command, original_command_text):
                         response_queue.put(response)
                         logger.info(f"Responding: {response}")
                         return jsonify({"response": response})
-            if found_room:
-                break
-
         if not found_room:
             # Check if subject is a doctor
+            doctor = None
             for doc in VALID_DOCTORS:
                 doctor_lower = doc.replace("_", " ").lower()
                 doctor_normalized = (
@@ -935,7 +929,10 @@ class Wall:
         # Apply camera transformation to wall rectangle
         transformed_rect = pygame.Rect(
             camera.apply((self.rect.left, self.rect.top)),
-            (int(self.rect.width * camera.zoom), int(self.rect.height * camera.zoom)),
+            (
+                int(self.rect.width * camera.zoom),
+                int(self.rect.height * camera.zoom),
+            ),
         )
         pygame.draw.rect(surface, color, transformed_rect)
 
@@ -991,12 +988,12 @@ class Camera:
 
 class CarRobot:
     def __init__(self, x, y, waypoints, waypoint_names, walls, prompt_queue, camera):
-        self.start_x = x
-        self.start_y = y
-        self.x = x
-        self.y = y
+        self.start_x = float(x)
+        self.start_y = float(y)
+        self.x = float(x)
+        self.y = float(y)
         self.angle = 0
-        self.speed = CAR_SPEED
+        self.speed = CAR_SPEED  # m/s
         self.waypoints = waypoints
         self.waypoint_names = waypoint_names
         self.current_target = None
@@ -1021,6 +1018,12 @@ class CarRobot:
         }
         logger.info(f"Waypoint Dictionary Initialized: {self.waypoint_dict}")
         self.create_sensors()  # Now called after setting self.camera
+
+        # Initialize last update time for time-based movement
+        self.last_update_time = pygame.time.get_ticks()
+
+        # Initialize movement trail
+        self.previous_positions = []
 
     def load_image(self):
         try:
@@ -1075,7 +1078,8 @@ class CarRobot:
                     self.waypoint_dict[wp_name]
                     for wp_name in self.waypoint_paths[path_key]
                 ]
-                self.current_target = self.path.pop(0)
+                if self.path:
+                    self.current_target = self.path.pop(0)
                 self.destination_name = "Start"
                 self.moving = True
                 self.is_returning_to_start = True
@@ -1131,21 +1135,27 @@ class CarRobot:
             self.update_sensors()
             self.state_reason = "Cannot rotate due to collision"
 
-    def rotate_towards_target(self, target_angle):
+    def rotate_towards_target(self, target_angle, elapsed_time):
         angle_diff = (target_angle - self.angle + 360) % 360
         if angle_diff > 180:
             angle_diff -= 360
-        if abs(angle_diff) < CAR_ROTATION_SPEED:
+        rotation_speed_per_frame = (
+            CAR_ROTATION_SPEED * elapsed_time
+        )  # degrees per frame
+        if abs(angle_diff) < rotation_speed_per_frame:
             angle_change = angle_diff
         elif angle_diff > 0:
-            angle_change = CAR_ROTATION_SPEED
+            angle_change = rotation_speed_per_frame
         else:
-            angle_change = -CAR_ROTATION_SPEED
+            angle_change = -rotation_speed_per_frame
         self.rotate(angle_change)
 
-    def move_forward(self):
-        new_x = self.x + self.speed * math.cos(math.radians(self.angle))
-        new_y = self.y - self.speed * math.sin(math.radians(self.angle))
+    def move_forward(self, elapsed_time):
+        # Calculate distance to move based on speed and elapsed time
+        distance = self.speed * elapsed_time  # meters
+        distance_pixels = distance * SCALE  # Convert to pixels
+        new_x = self.x + distance_pixels * math.cos(math.radians(self.angle))
+        new_y = self.y - distance_pixels * math.sin(math.radians(self.angle))
         if not self.check_collision(new_x, new_y):
             self.x = new_x
             self.y = new_y
@@ -1165,7 +1175,7 @@ class CarRobot:
                 self.current_location_name = waypoint_name
             if self.path:
                 self.current_target = self.path.pop(0)
-                self.state_reason = f"Moving towards waypoint ({self.current_target[0]}, {self.current_target[1]})"
+                self.state_reason = f"Moving towards waypoint {self.get_waypoint_name(self.current_target)}"
             else:
                 self.current_location_name = self.destination_name
                 self.current_target = None
@@ -1202,7 +1212,8 @@ class CarRobot:
             closest_x = max(wall.rect.left, min(self.x, wall.rect.right))
             closest_y = max(wall.rect.top, min(self.y, wall.rect.bottom))
             distance = math.hypot(self.x - closest_x, self.y - closest_y)
-            if distance < ROBOT_DIAMETER_SCALED / 2:
+            # Use ROBOT_VISUAL_DIAMETER / 2 for collision detection
+            if distance < ROBOT_VISUAL_DIAMETER / 2:
                 logger.warning(f"Collision with wall at position: {wall.rect}")
                 collision = True
                 break
@@ -1220,8 +1231,9 @@ class CarRobot:
             self.path = [
                 self.waypoint_dict[wp_name] for wp_name in self.waypoint_paths[path_key]
             ]
-            self.current_target = self.path.pop(0)
-            logger.debug(f"Path found for {path_key}: {self.path}")
+            if self.path:
+                self.current_target = self.path.pop(0)
+                logger.debug(f"Path found for {path_key}: {self.path}")
         else:
             self.current_target = target_point
             self.path = []
@@ -1229,6 +1241,10 @@ class CarRobot:
         logger.info(f"Set target for {destination_name}: {self.current_target}")
 
     def update(self):
+        current_time = pygame.time.get_ticks()
+        elapsed_time = (current_time - self.last_update_time) / 1000.0  # seconds
+        self.last_update_time = current_time
+
         if self.moving and self.current_target:
             self.started_moving = True
             if self.arduino_obstacle_detected:
@@ -1260,11 +1276,13 @@ class CarRobot:
                 angle_diff = (target_angle - self.angle + 360) % 360
                 if angle_diff > 180:
                     angle_diff -= 360
-                if abs(angle_diff) > CAR_ROTATION_SPEED:
-                    self.rotate_towards_target(target_angle)
+                if abs(angle_diff) > CAR_ROTATION_SPEED * elapsed_time:
+                    self.rotate_towards_target(target_angle, elapsed_time)
                     self.state_reason = "Rotating towards target"
                 else:
-                    self.move_forward()
+                    self.angle = target_angle  # Snap to target angle
+                    self.move_forward(elapsed_time)
+                    self.state_reason = "Moving forward"
                     self.check_point_reached()
         else:
             if self.arduino_obstacle_detected:
@@ -1295,7 +1313,10 @@ class CarRobot:
         surface.blit(reason_text, (x + status_text.get_width() + 40, y))
         surface.blit(
             zoom_text,
-            (x + status_text.get_width() + 40 + reason_text.get_width() + 40, y),
+            (
+                x + status_text.get_width() + 40 + reason_text.get_width() + 40,
+                y,
+            ),
         )
 
         # Draw zoom level bar below the texts
@@ -1336,10 +1357,10 @@ class CarRobot:
             ROBOT_VISUAL_DIAMETER // 2,
         )
         # Orientation line
-        end_x = self.x + (ROBOT_VISUAL_DIAMETER // 2) * math.cos(
+        end_x = self.x + (ROBOT_VISUAL_DIAMETER / 2) * math.cos(
             math.radians(self.angle)
         )
-        end_y = self.y - (ROBOT_VISUAL_DIAMETER // 2) * math.sin(
+        end_y = self.y - (ROBOT_VISUAL_DIAMETER / 2) * math.sin(
             math.radians(self.angle)
         )
         end_screen_pos = camera.apply((end_x, end_y))
@@ -1371,6 +1392,13 @@ class CarRobot:
             font = pygame.font.SysFont(None, 24)
             img = font.render(self.waypoint_names[idx], True, BLACK)
             surface.blit(img, (wp_screen_pos[0] + 10, wp_screen_pos[1] - 10))
+
+        # Optional: Draw trail
+        self.previous_positions.append(robot_screen_pos)
+        if len(self.previous_positions) > 20:
+            self.previous_positions.pop(0)
+        if len(self.previous_positions) > 1:
+            pygame.draw.lines(surface, BLUE, False, self.previous_positions, 2)
 
     # Example path dictionary
     waypoint_paths = {
@@ -1705,6 +1733,7 @@ class Game:
                         else:
                             logger.warning(f"Unknown location: {location_normalized}")
                     elif command == "user_choice_done":
+                        logger.debug("Received 'user_choice_done' command.")
                         self.car.return_to_start()
                         response_queue.put("Goodbye, going to start point.")
                     elif command == "user_choice_another":
