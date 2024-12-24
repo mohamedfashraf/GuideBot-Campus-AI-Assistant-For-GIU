@@ -42,6 +42,7 @@ BLACK = (0, 0, 0)
 RED_COLOR = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
+DARK_GRAY = (169, 169, 169)  # Added definition for DARK_GRAY
 
 # Real-world dimensions (meters)
 inner_points_real = [
@@ -93,7 +94,7 @@ SENSOR_LENGTH = max(
 )  # pixels, minimum 15 for visibility
 
 SENSOR_ANGLES = [-30, 0, 30]
-WAYPOINT_THRESHOLD = 2  # pixels
+WAYPOINT_THRESHOLD = 1  # pixels (increased from 2)
 FPS = 60
 
 SERIAL_PORT = "COM5"  # Update this to your Arduino's serial port
@@ -129,17 +130,8 @@ all_rooms = set()
 for b_data in VALID_BUILDINGS.values():
     all_rooms.update(b_data["rooms"])
 
-VALID_DOCTORS = {"dr_nada", "dr_slim", "dr_omar"}
-
-DAYS_OF_WEEK = [
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
-    "sunday",
-]
+VALID_DOCTORS = ["dr_slim", "dr_nada", "dr_omar"]
+DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
 labels = [
     "kill",
@@ -285,6 +277,60 @@ def check_room_availability(room):
     return {"is_open": True}
 
 
+def get_doctor_schedule(doctor, day):
+    day = day.lower()
+    doctor = doctor.lower()
+    if doctor in doctor_availability and day in doctor_availability[doctor]:
+        return doctor_availability[doctor][day]
+    else:
+        return None
+
+
+def get_next_opening(room):
+    current_day = datetime.now().strftime("%A").lower()
+    current_time = datetime.now().strftime("%H:%M")
+    days_of_week = DAYS_OF_WEEK
+    for i in range(1, 8):
+        day_index = (days_of_week.index(current_day) + i) % 7
+        next_day = days_of_week[day_index]
+        if next_day in weekly_schedule.get(room, {}):
+            opening_time = weekly_schedule[room][next_day]["opens_at"]
+            return next_day, opening_time
+    return None, None
+
+
+def get_doctor_availability_data(doctor_id):
+    current_day = datetime.now().strftime("%A").lower()
+    current_time = datetime.now().strftime("%H:%M")
+    availability = doctor_availability.get(doctor_id, {})
+    if availability:
+        for time_range in availability.get(current_day, []):
+            start_time, end_time = map(str.strip, time_range.split("-"))
+            if start_time <= current_time <= end_time:
+                return {"is_available": True}
+        # If no slot found today, check next day
+        for i in range(1, 7):
+            next_day_index = (DAYS_OF_WEEK.index(current_day) + i) % 7
+            next_day = DAYS_OF_WEEK[next_day_index]
+            for time_range in availability.get(next_day, []):
+                next_time = time_range.split("-")[0].strip()
+                next_availability = f"The next available time is on {next_day.capitalize()} at {next_time}."
+                return {"is_available": False, "next_availability": next_availability}
+        return {"is_available": False, "next_availability": "No availability found."}
+    else:
+        # Doctor not found or not scheduled
+        days_of_week = DAYS_OF_WEEK
+        current_day_index = days_of_week.index(current_day)
+        for i in range(1, 7):
+            next_day_index = (current_day_index + i) % 7
+            next_day = days_of_week[next_day_index]
+            for time_range in availability.get(next_day, []):
+                next_time = time_range.split("-")[0].strip()
+                next_availability = f"The next available time is on {next_day.capitalize()} at {next_time}."
+                return {"is_available": False, "next_availability": next_availability}
+        return {"is_available": False, "next_availability": "No availability found."}
+
+
 app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)
 
@@ -319,12 +365,21 @@ def is_affirmative(response):
         "please do",
         "of course",
         "affirmative",
+        "i'm done",
+        "done",
     ]
     return any(word in response.lower() for word in affirmative_responses)
 
 
 def is_negative(response):
-    negative_responses = ["no", "nope", "not now", "maybe later", "negative"]
+    negative_responses = [
+        "no",
+        "nope",
+        "not now",
+        "maybe later",
+        "negative",
+        "i need something else",
+    ]
     return any(word in response.lower() for word in negative_responses)
 
 
@@ -406,15 +461,26 @@ def home():
 @app.route("/doctor_availability", methods=["GET"])
 def doctor_availability_endpoint():
     doctor_id = request.args.get("doctor_id")
-    if doctor_id:
-        availability = doctor_availability.get("dr_" + doctor_id.lower(), {})
-        if availability:
-            return jsonify(
-                {"status": "success", "data": {"dr_" + doctor_id.lower(): availability}}
-            )
-        return jsonify({"status": "error", "message": "Doctor not found"}), 404
-    return jsonify({"status": "success", "data": doctor_availability})
 
+    # If doctor_id is provided
+    if doctor_id:
+        # Normalize the doctor_id to match the keys in `doctor_availability`
+        normalized_id = (
+            f"dr_{doctor_id.lower()}"
+            if not doctor_id.startswith("dr_")
+            else doctor_id.lower()
+        )
+
+        # Check if the doctor exists in the availability data
+        availability = doctor_availability.get(normalized_id, {})
+        if availability:
+            return jsonify({"status": "success", "data": {normalized_id: availability}})
+
+        # If doctor is not found
+        return jsonify({"status": "error", "message": "Doctor not found"}), 404
+
+    # If no doctor_id is provided, return all availability
+    return jsonify({"status": "success", "data": doctor_availability})
 
 @app.route("/command", methods=["POST"])
 def handle_command():
@@ -478,11 +544,6 @@ def post_choice():
         return jsonify({"status": "error", "message": "No choice provided."}), 400
 
 
-def open_browser_after_delay(url, delay=1):
-    time.sleep(delay)
-    webbrowser.open(url)
-
-
 def open_application(command, original_command_text):
     """
     Main logic for handling commands.
@@ -507,13 +568,15 @@ def open_application(command, original_command_text):
                 response = (
                     f"Taking you to the {location_normalized.replace('_', ' ')} now."
                 )
-            pending_action = None
+            with pending_action_lock:
+                pending_action = None  # Reset pending_action after handling
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
         elif is_negative(original_command_text):
             response = "Okay, let me know if you need anything else."
-            pending_action = "ask_if_help_needed"
+            with pending_action_lock:
+                pending_action = "ask_if_help_needed"
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -526,13 +589,16 @@ def open_application(command, original_command_text):
     elif pending_action == "ask_if_help_needed":
         if is_affirmative(original_command_text):
             response = "Great! What would you like help with?"
-            pending_action = None
+            with pending_action_lock:
+                pending_action = None
         elif is_negative(original_command_text):
             response = "Okay, feel free to ask if you need any assistance. Goodbye!"
-            pending_action = None
+            with pending_action_lock:
+                pending_action = None
         else:
             response = "I'm sorry, I didn't catch that. Please say yes or no."
-            pending_action = None
+            with pending_action_lock:
+                pending_action = None
             logger.debug("User provided a direct request instead of YES/NO.")
             response_queue.put(response)
             logger.info(f"Responding: {response}")
@@ -566,7 +632,8 @@ def open_application(command, original_command_text):
             return jsonify({"response": response})
         elif is_negative(original_command_text):
             response = "Okay, let me know if you need anything else."
-            pending_action = "ask_if_help_needed"
+            with pending_action_lock:
+                pending_action = "ask_if_help_needed"
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -580,7 +647,8 @@ def open_application(command, original_command_text):
         room = pending_action[len("ask_for_day_room_") :]
         if is_negative(original_command_text):
             response = "Okay, let me know if you need anything else."
-            pending_action = "ask_if_help_needed"
+            with pending_action_lock:
+                pending_action = "ask_if_help_needed"
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -596,7 +664,8 @@ def open_application(command, original_command_text):
             else:
                 response = f"The {room.replace('_', ' ')} is closed on {day_in_text.capitalize()}."
             response += " Is there anything else I can assist you with?"
-            pending_action = "ask_if_help_needed"
+            with pending_action_lock:
+                pending_action = "ask_if_help_needed"
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -612,7 +681,8 @@ def open_application(command, original_command_text):
         doctor = pending_action[len("ask_for_day_doctor_") :]
         if is_negative(original_command_text):
             response = "Okay, let me know if you need anything else."
-            pending_action = "ask_if_help_needed"
+            with pending_action_lock:
+                pending_action = "ask_if_help_needed"
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -629,7 +699,8 @@ def open_application(command, original_command_text):
             else:
                 response = f"{doctor.replace('_', ' ').title()} is not available on {day_in_text.capitalize()}."
             response += " Is there anything else I can assist you with?"
-            pending_action = "ask_if_help_needed"
+            with pending_action_lock:
+                pending_action = "ask_if_help_needed"
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -673,13 +744,15 @@ def open_application(command, original_command_text):
                         else:
                             response = f"The {rm.replace('_', ' ')} is closed on {day_in_text.capitalize()}."
                         response += " Is there anything else I can assist you with?"
-                        pending_action = "ask_if_help_needed"
+                        with pending_action_lock:
+                            pending_action = "ask_if_help_needed"
                         response_queue.put(response)
                         logger.info(f"Responding: {response}")
                         return jsonify({"response": response})
                     else:
                         response = "Do you need the opening times for a specific day?"
-                        pending_action = f"ask_for_day_room_{rm}"
+                        with pending_action_lock:
+                            pending_action = f"ask_for_day_room_{rm}"
                         response_queue.put(response)
                         logger.info(f"Responding: {response}")
                         return jsonify({"response": response})
@@ -851,7 +924,8 @@ def open_application(command, original_command_text):
             else:
                 response = f"{doctor.replace('_', ' ').title()} is not available today."
             response += " Is there anything else I can assist you with?"
-            pending_action = "ask_if_help_needed"
+            with pending_action_lock:
+                pending_action = "ask_if_help_needed"
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -868,7 +942,8 @@ def open_application(command, original_command_text):
                 else:
                     response = f"{doctor.replace('_', ' ').title()} is not available on {day_in_text.capitalize()}."
                 response += " Is there anything else I can assist you with?"
-                pending_action = "ask_if_help_needed"
+                with pending_action_lock:
+                    pending_action = "ask_if_help_needed"
                 response_queue.put(response)
                 logger.info(f"Responding: {response}")
                 return jsonify({"response": response})
@@ -1002,7 +1077,6 @@ class CarRobot:
         self.moving = False
         self.threshold = WAYPOINT_THRESHOLD
         self.walls = walls
-        self.load_image()
         self.state_reason = "Waiting for waypoint"
         self.is_returning_to_start = False
         self.prompt_queue = prompt_queue
@@ -1024,19 +1098,6 @@ class CarRobot:
 
         # Initialize movement trail
         self.previous_positions = []
-
-    def load_image(self):
-        try:
-            # If you have a specific image, load and scale it.
-            # For simulation purposes, we'll represent the robot as a simple circle.
-            # Uncomment the following lines if you have a car image.
-            # self.original_image = pygame.image.load(CAR_IMAGE_PATH)
-            # self.original_image = pygame.transform.scale(self.original_image, (ROBOT_VISUAL_DIAMETER, ROBOT_VISUAL_DIAMETER))
-            # self.image = self.original_image
-            pass
-        except pygame.error as e:
-            logger.error(f"Failed to load car image: {e}")
-            sys.exit()
 
     def create_sensors(self):
         self.sensors = []
@@ -1080,12 +1141,13 @@ class CarRobot:
                 ]
                 if self.path:
                     self.current_target = self.path.pop(0)
+                    logger.debug(f"Set current_target to {self.current_target}")
                 self.destination_name = "Start"
                 self.moving = True
                 self.is_returning_to_start = True
                 self.state_reason = "Returning to start via checkpoints"
                 logger.info(
-                    f"Returning to start from {self.current_location_name} following checkpoints."
+                    f"Returning to Start via path: {self.waypoint_paths[path_key]}"
                 )
             else:
                 logger.warning(
@@ -1168,26 +1230,30 @@ class CarRobot:
             return False
         target_x, target_y = self.current_target
         distance = math.hypot(target_x - self.x, target_y - self.y)
+        logger.debug(f"Distance to target: {distance}")
         if distance < self.threshold:
             logger.info(f"Reached point ({target_x}, {target_y})")
             waypoint_name = self.get_waypoint_name(self.current_target)
             if waypoint_name:
                 self.current_location_name = waypoint_name
+                logger.debug(f"Updated current_location_name to {waypoint_name}")
             if self.path:
                 self.current_target = self.path.pop(0)
                 self.state_reason = f"Moving towards waypoint {self.get_waypoint_name(self.current_target)}"
+                logger.info(f"New target set to {self.current_target}")
             else:
                 self.current_location_name = self.destination_name
                 self.current_target = None
                 self.moving = False
-                destination_name = self.current_location_name
                 if not self.is_returning_to_start:
-                    prompt_message = f"Reached {destination_name.replace('_', ' ')}. Are you done or do you need something else?"
+                    prompt_message = f"Reached {self.destination_name.replace('_', ' ')}. Are you done or do you need something else?"
                     self.prompt_queue.put(prompt_message)
                     self.state_reason = "Awaiting user choice"
+                    logger.info(f"Prompt enqueued: {prompt_message}")
                 else:
                     self.is_returning_to_start = False
                     self.state_reason = "At Start Point"
+                    logger.info("Robot has returned to Start Point.")
                 return True
         return False
 
@@ -1198,9 +1264,7 @@ class CarRobot:
         return None
 
     def update_mask(self):
-        # If using an image, rotate it here
-        # For simplicity, we'll represent the robot as a circle
-        # So no mask update is needed
+        # Not needed for circle representation
         return None, None
 
     def check_collision(self, new_x, new_y):
@@ -1418,6 +1482,10 @@ class CarRobot:
         ("dr_nada", "Start"): ["M216", "M215", "Start"],
         ("M216", "dr_nada"): ["dr_nada"],
         ("dr_nada", "M216"): ["M216"],
+        # Added missing paths
+        ("dr_omar", "Start"): ["M216", "M215", "Start"],
+        ("Start", "dr_omar"): ["M215", "M216", "dr_omar"],
+        # Add more if there are other locations
     }
 
 
@@ -1649,8 +1717,16 @@ class Game:
             (20, 22),  # M216
             (30, 21),  # Admission
             (35, 22),  # dr_nada
+            (40, 22),  # dr_omar (added for testing)
         ]
-        self.waypoint_names = ["Start", "M215", "M216", "Admission", "dr_nada"]
+        self.waypoint_names = [
+            "Start",
+            "M215",
+            "M216",
+            "Admission",
+            "dr_nada",
+            "dr_omar",
+        ]
 
         # Scaling functions
         def scale_x(rx):
@@ -1736,9 +1812,12 @@ class Game:
                         logger.debug("Received 'user_choice_done' command.")
                         self.car.return_to_start()
                         response_queue.put("Goodbye, going to start point.")
+                        # Reset pending_action
+                        with pending_action_lock:
+                            pending_action = None
                     elif command == "user_choice_another":
                         self.car.state_reason = "Waiting for new command"
-                        response_queue.put("How may I help you further")
+                        response_queue.put("How may I help you further?")
         except queue.Empty:
             pass
 
@@ -1847,6 +1926,15 @@ class Game:
         self.serial_reader.join()
         pygame.quit()
         sys.exit()
+
+    def draw_grid(self):
+        grid_color = DARK_GRAY
+        grid_spacing = 50  # pixels
+
+        for x in range(0, WIDTH, grid_spacing):
+            pygame.draw.line(self.screen, grid_color, (x, 0), (x, HEIGHT), 1)
+        for y in range(0, HEIGHT, grid_spacing):
+            pygame.draw.line(self.screen, grid_color, (0, y), (WIDTH, y), 1)
 
 
 def open_browser_after_delay(url, delay=1):
