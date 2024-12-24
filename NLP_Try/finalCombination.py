@@ -1428,7 +1428,10 @@ class CarRobot:
             pygame.draw.line(surface, color, robot_screen_pos, sensor_end_screen, 2)
             pygame.draw.circle(surface, color, sensor_end_screen, 3)
 
-        # Draw waypoints
+        # Draw waypoints with labels underneath
+        font = pygame.font.SysFont(
+            None, 24
+        )  # Initialize font once outside the loop for efficiency
         for idx, (wp_x, wp_y) in enumerate(self.waypoints):
             color = (
                 GREEN
@@ -1437,9 +1440,18 @@ class CarRobot:
             )
             wp_screen_pos = camera.apply((wp_x, wp_y))
             pygame.draw.circle(surface, color, wp_screen_pos, 8)
-            font = pygame.font.SysFont(None, 24)
-            img = font.render(self.waypoint_names[idx], True, BLACK)
-            surface.blit(img, (wp_screen_pos[0] + 10, wp_screen_pos[1] - 10))
+
+            # Render the waypoint name
+            waypoint_name = self.waypoint_names[idx]
+            img = font.render(waypoint_name, True, BLACK)
+            text_rect = img.get_rect()
+
+            # Position the text centered below the waypoint
+            text_rect.center = (
+                wp_screen_pos[0],
+                wp_screen_pos[1] + 15,
+            )  # 15 pixels below
+            surface.blit(img, text_rect)
 
         # Optional: Draw trail
         self.previous_positions.append(robot_screen_pos)
@@ -1453,23 +1465,23 @@ class CarRobot:
         ("Start", "M215"): ["M215"],
         ("M215", "M216"): ["M216"],
         ("M216", "Admission"): ["Admission"],
-        ("Admission", "Start"): ["M216", "M215", "Start"],
+        ("Admission", "dr_nada"): ["dr_nada"],
+        ("dr_nada", "dr_omar"): ["dr_omar"],
+        ("dr_omar", "Start"): ["dr_nada", "Admission", "M216", "M215", "Start"],
         ("Start", "M216"): ["M215", "M216"],
         ("Start", "Admission"): ["M215", "M216", "Admission"],
         ("M215", "Admission"): ["M216", "Admission"],
+        ("Admission", "M215"): ["M216", "M215"],
         ("M216", "M215"): ["M215"],
         ("M216", "Start"): ["M215", "Start"],
-        ("Admission", "M216"): ["M216"],
-        ("Admission", "M215"): ["M216", "M215"],
-        ("M215", "Start"): ["Start"],
-        ("Start", "dr_nada"): ["M215", "M216", "dr_nada"],
-        ("dr_nada", "Start"): ["M216", "M215", "Start"],
-        ("M216", "dr_nada"): ["dr_nada"],
-        ("dr_nada", "M216"): ["M216"],
-        # Added missing paths
-        ("dr_omar", "Start"): ["M216", "M215", "Start"],
-        ("Start", "dr_omar"): ["M215", "M216", "dr_omar"],
-        # Add more if there are other locations
+        ("Admission", "Start"): ["M216", "M215", "Start"],
+        ("Start", "dr_nada"): ["M215", "M216", "Admission", "dr_nada"],
+        ("dr_nada", "Start"): ["Admission", "M216", "M215", "Start"],
+        ("M216", "dr_nada"): ["Admission", "dr_nada"],
+        ("dr_nada", "M216"): ["Admission", "M216"],
+        ("Start", "dr_omar"): ["M215", "M216", "Admission", "dr_nada", "dr_omar"],
+        ("dr_omar", "Start"): ["dr_nada", "Admission", "M216", "M215", "Start"],
+        # Add more paths if necessary
     }
 
 
@@ -1696,12 +1708,12 @@ class Game:
         # Define waypoints in real-world coordinates (meters)
         # Ensure they are between inner and outer boundaries
         waypoints_real = [
-            (5, 22),  # Start (y > 20 to be outside inner_rect)
-            (10, 21),  # M215
-            (20, 22),  # M216
-            (30, 21),  # Admission
-            (35, 22),  # dr_nada
-            (40, 22),  # dr_omar (added for testing)
+            (2.5, 21.75),  # Start
+            (9.5, 21.75),  # M215
+            (16.5, 21.75),  # M216
+            (23.5, 21.75),  # Admission
+            (30.5, 21.75),  # Dr. Nada
+            (37.5, 21.75),  # Dr. Omar
         ]
         self.waypoint_names = [
             "Start",
