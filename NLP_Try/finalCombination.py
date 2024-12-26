@@ -630,10 +630,7 @@ def open_application(command, original_command_text):
             opening_times = check_room_availability(room)
             if opening_times:
                 if opening_times["is_open"]:
-                    response = (
-                        f"The {room.replace('_', ' ')} opens at {opening_times['opens_at']} "
-                        f"and closes at {opening_times['closes_at']} on {day_in_text.capitalize()}."
-                    )
+                    response = f"The {room.replace('_', ' ')} opens at {opening_times['opens_at']} and closes at {opening_times['closes_at']} on {day_in_text.capitalize()}."
                 else:
                     response = f"The {room.replace('_', ' ')} is closed on {day_in_text.capitalize()} and will open next at {opening_times['opens_at']}."
                 response += " Is there anything else I can assist you with?"
@@ -1197,7 +1194,7 @@ class CarRobot:
         # Initialize movement trail
         self.previous_positions = []
 
-        # Example path dictionary
+        # Define waypoint paths for returning to start, including the fix for M215
         self.waypoint_paths = {
             ("Start", "M215"): ["M215"],
             ("M215", "M216"): ["M216"],
@@ -1218,6 +1215,8 @@ class CarRobot:
             ("dr_nada", "M216"): ["Admission", "M216"],
             ("Start", "dr_omar"): ["M215", "M216", "Admission", "dr_nada", "dr_omar"],
             ("dr_omar", "Start"): ["dr_nada", "Admission", "M216", "M215", "Start"],
+            # Added the missing path for M215 to Start
+            ("M215", "Start"): ["Start"],
             # Add more paths if necessary
         }
 
@@ -1598,61 +1597,6 @@ class CarRobot:
         if len(self.previous_positions) > 1:
             pygame.draw.lines(surface, BLUE, False, self.previous_positions, 2)
 
-    # Define waypoint paths for returning to start
-    waypoint_paths = {
-        ("Start", "M215"): ["M215"],
-        ("M215", "M216"): ["M216"],
-        ("M216", "Admission"): ["Admission"],
-        ("Admission", "dr_nada"): ["dr_nada"],
-        ("dr_nada", "dr_omar"): ["dr_omar"],
-        ("dr_omar", "Start"): ["dr_nada", "Admission", "M216", "M215", "Start"],
-        ("Start", "M216"): ["M215", "M216"],
-        ("Start", "Admission"): ["M215", "M216", "Admission"],
-        ("M215", "Admission"): ["M216", "Admission"],
-        ("Admission", "M215"): ["M216", "M215"],
-        ("M216", "M215"): ["M215"],
-        ("M216", "Start"): ["M215", "Start"],
-        ("Admission", "Start"): ["M216", "M215", "Start"],
-        ("Start", "dr_nada"): ["M215", "M216", "Admission", "dr_nada"],
-        ("dr_nada", "Start"): ["Admission", "M216", "M215", "Start"],
-        ("M216", "dr_nada"): ["Admission", "dr_nada"],
-        ("dr_nada", "M216"): ["Admission", "M216"],
-        ("Start", "dr_omar"): ["M215", "M216", "Admission", "dr_nada", "dr_omar"],
-        ("dr_omar", "Start"): ["dr_nada", "Admission", "M216", "M215", "Start"],
-        # Add more paths if necessary
-    }
-
-    def draw_walls(self, camera):
-        for wall in self.walls:
-            wall.draw(self.screen, camera, color=BLACK)
-
-        # Draw corridor outlines just for visual reference:
-        if self.outer_polygon:
-            transformed_outer = [camera.apply(pos) for pos in self.outer_polygon]
-            pygame.draw.polygon(self.screen, BLUE, transformed_outer, 3)
-        if self.inner_polygon:
-            transformed_inner = [camera.apply(pos) for pos in self.inner_polygon]
-            pygame.draw.polygon(self.screen, RED_COLOR, transformed_inner, 3)
-
-    def choose_waypoint(self, mouse_x, mouse_y):
-        closest_index = None
-        min_distance = float("inf")
-        for idx, (wp_x, wp_y) in enumerate(self.waypoints):
-            # Apply camera to get screen position
-            wp_screen_x, wp_screen_y = self.camera.apply((wp_x, wp_y))
-            distance = math.hypot(mouse_x - wp_screen_x, mouse_y - wp_screen_y)
-            if distance < min_distance and distance < 50:
-                closest_index = idx
-                min_distance = distance
-        if closest_index is not None:
-            destination_name = self.waypoint_names[closest_index]
-            target_point = self.waypoints[closest_index]
-            self.car.set_target(target_point, destination_name)
-            logger.info(
-                f"Selected waypoint {destination_name}: ({target_point[0]}, {target_point[1]})"
-            )
-            self.send_command("START_SERVO")
-
     def send_command(self, command):
         self.serial_reader.send_command(command)
 
@@ -1675,7 +1619,7 @@ class CarRobot:
                             self.waypoint_dict.get(location_normalized),
                         )
                         if target_point:
-                            self.car.set_target(target_point, location_normalized)
+                            self.set_target(target_point, location_normalized)
                             logger.info(
                                 f"Setting target to {location_normalized}: {target_point}"
                             )
@@ -1684,10 +1628,10 @@ class CarRobot:
                             logger.warning(f"Unknown location: {location_normalized}")
                 elif command == "user_choice_done":
                     logger.debug("Received 'user_choice_done' command.")
-                    self.car.return_to_start()
+                    self.return_to_start()
                     response_queue.put("Goodbye, going to start point.")
                 elif command == "user_choice_another":
-                    self.car.state_reason = "Waiting for new command"
+                    self.state_reason = "Waiting for new command"
                     response_queue.put("How may I help you further?")
         except queue.Empty:
             pass
@@ -1723,90 +1667,6 @@ class CarRobot:
         ).start()
         app.run(debug=False, port=5000, use_reloader=False)
 
-    def run(self):
-        flask_thread = threading.Thread(target=self.run_flask_app, daemon=True)
-        flask_thread.start()
-        running = True
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    mouse_x, mouse_y = pygame.mouse.get_pos()
-                    if mouse_y < HEIGHT:
-                        self.choose_waypoint(mouse_x, mouse_y)
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
-                        # Zoom in with upper limit
-                        if self.camera.zoom < 5.0:
-                            self.camera.zoom += 0.5  # Increment zoom
-                            logger.debug(f"Zoom increased to {self.camera.zoom}")
-                    elif (
-                        event.key == pygame.K_MINUS or event.key == pygame.K_UNDERSCORE
-                    ):
-                        # Zoom out with lower limit
-                        if self.camera.zoom > 0.5:
-                            self.camera.zoom = max(
-                                0.5, self.camera.zoom - 0.5
-                            )  # Decrement zoom with a minimum limit
-                            logger.debug(f"Zoom decreased to {self.camera.zoom}")
-
-            self.process_commands()
-            self.process_responses()
-
-            # Update camera to follow the robot
-            self.camera.update((self.car.x, self.car.y))
-
-            self.car.update()
-            current_moving_state = self.car.moving
-            if current_moving_state != self.previous_moving_state:
-                if current_moving_state:
-                    self.send_command("START_SERVO")
-                    logger.debug(
-                        "Command 'START_SERVO' sent due to state transition to MOVING."
-                    )
-                else:
-                    self.send_command("STOP_SERVO")
-                    logger.debug(
-                        "Command 'STOP_SERVO' sent due to state transition to STOPPED."
-                    )
-            self.previous_moving_state = current_moving_state
-
-            # Clear the main simulation area (top 600x450) with white background
-            simulation_rect = pygame.Rect(0, 0, WIDTH, HEIGHT)
-            self.screen.fill(WHITE, simulation_rect)
-
-            # Draw corridor walls and polygons
-            self.draw_walls(self.camera)
-            # Draw the robot
-            self.car.draw(self.screen, self.camera)
-            # Draw status text and zoom indicators in the bottom area
-            self.car.draw_status(self.screen)
-
-            # Draw the bottom status area with a white background
-            bottom_rect = pygame.Rect(0, HEIGHT, WIDTH, BUTTON_AREA_HEIGHT)
-            pygame.draw.rect(self.screen, WHITE, bottom_rect)
-
-            # Ensure status texts are drawn on top of the white background
-            self.car.draw_status(self.screen)
-
-            pygame.display.flip()
-            self.clock.tick(FPS)
-
-        self.serial_reader.stop()
-        self.serial_reader.join()
-        pygame.quit()
-        sys.exit()
-
-    def draw_grid(self):
-        grid_color = DARK_GRAY
-        grid_spacing = 50  # pixels
-
-        for x in range(0, WIDTH, grid_spacing):
-            pygame.draw.line(self.screen, grid_color, (x, 0), (x, HEIGHT), 1)
-        for y in range(0, HEIGHT, grid_spacing):
-            pygame.draw.line(self.screen, grid_color, (0, y), (WIDTH, y), 1)
-
 
 class SerialReader(threading.Thread):
     def __init__(self, serial_port, baud_rate, car, game):
@@ -1818,7 +1678,7 @@ class SerialReader(threading.Thread):
         self.car = car
         self.game = game
         self.state = "STOPPED"
-        self.lock = threading.Lock()
+        self.lock = Lock()
         self.obstacle_response_sent = False
 
     def run(self):
