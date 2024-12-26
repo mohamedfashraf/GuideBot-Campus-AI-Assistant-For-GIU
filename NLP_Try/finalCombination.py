@@ -102,7 +102,7 @@ BAUD_RATE = 115200
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,  # Set to INFO to reduce verbosity
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
@@ -318,7 +318,7 @@ def get_next_opening(room):
 def get_doctor_availability_data(doctor_id):
     current_day = datetime.now().strftime("%A")  # Removed .lower()
     current_time = datetime.now().strftime("%H:%M")
-    logger.debug(
+    logger.info(
         f"Checking availability for {doctor_id} on {current_day} at {current_time}"
     )
     availability = doctor_availability.get(doctor_id, {})
@@ -335,7 +335,7 @@ def get_doctor_availability_data(doctor_id):
     if today_schedule:
         for time_range in today_schedule:
             start_time, end_time = map(str.strip, time_range.split("-"))
-            logger.debug(f"Checking time range {start_time} - {end_time} for today.")
+            logger.info(f"Checking time range {start_time} - {end_time} for today.")
             if start_time <= current_time <= end_time:
                 logger.info(f"Doctor {doctor_id} is available now.")
                 return {"is_available": True}
@@ -467,10 +467,10 @@ def doctor_availability_endpoint():
 @app.route("/command", methods=["POST"])
 def handle_command():
     data = request.json
-    logger.debug(f"Received data: {data}")
+    logger.info(f"Received data: {data}")
     command_text = data.get("text", "").strip()
     if command_text:
-        logger.debug(f"Command received: {command_text}")
+        logger.info(f"Command received: {command_text}")
         global pending_action
         with pending_action_lock:
             current_pending = pending_action
@@ -527,8 +527,8 @@ def open_application(command, original_command_text):
     response = ""
     command = command.strip().lower()
 
-    logger.debug(f"open_application called with command: {command}")
-    logger.debug(f"Original command text: {original_command_text}")
+    logger.info(f"open_application called with command: {command}")
+    logger.info(f"Original command text: {original_command_text}")
 
     # =================== Handling user confirmations (yes/no) ===================
     with pending_action_lock:
@@ -538,7 +538,7 @@ def open_application(command, original_command_text):
         if is_affirmative(original_command_text):
             location = current_pending[len("go_to_") :]
             location_normalized = location.replace("-", "_").replace(" ", "_").title()
-            logger.debug(f"User confirmed to go to location: {location_normalized}")
+            logger.info(f"User confirmed to go to location: {location_normalized}")
             command_queue.put(f"go_to_{location_normalized}")
             if location_normalized.lower() in VALID_DOCTORS:
                 response = f"Taking you to {location_normalized.replace('_', ' ')}'s office now."
@@ -698,10 +698,10 @@ def open_application(command, original_command_text):
 
     if availability_query_match:
         subject = availability_query_match.group(2).strip()
-        logger.debug(f"Subject extracted for availability query: {subject}")
+        logger.info(f"Subject extracted for availability query: {subject}")
         subject_normalized = subject.replace("dr ", "").replace("doctor ", "").strip()
         day_in_text = extract_day_from_text(command_normalized)
-        logger.debug(f"Day extracted from query: {day_in_text}")
+        logger.info(f"Day extracted from query: {day_in_text}")
 
         # Check if subject is a room
         found_room = False
@@ -741,7 +741,7 @@ def open_application(command, original_command_text):
                 )
                 if doctor_normalized in command_normalized:
                     doctor = doc
-                    logger.debug(f"Identified doctor: {doctor}")
+                    logger.info(f"Identified doctor: {doctor}")
                     break
 
         # Topics if no room/doctor found
@@ -861,7 +861,7 @@ def open_application(command, original_command_text):
         for rm in b_data["rooms"]:
             if rm.replace("_", " ").lower() in command:
                 room = rm
-                logger.debug(f"Identified room: {room}")
+                logger.info(f"Identified room: {room}")
                 break
         if room:
             break
@@ -875,7 +875,7 @@ def open_application(command, original_command_text):
             )
             if doctor_normalized in command_normalized:
                 doctor = valid_doctor
-                logger.debug(f"Identified doctor: {doctor}")
+                logger.info(f"Identified doctor: {doctor}")
                 break
 
     # Topics if no room/doctor found
@@ -1233,9 +1233,10 @@ class CarRobot:
                 math.radians(sensor_angle)
             )
             self.sensors.append((sensor_angle, (sensor_end_x, sensor_end_y)))
-            logger.debug(
-                f"Sensor at angle {sensor_angle}: End point ({sensor_end_x}, {sensor_end_y})"
-            )
+            # Removed less critical debug logs
+            # logger.debug(
+            #     f"Sensor at angle {sensor_angle}: End point ({sensor_end_x}, {sensor_end_y})"
+            # )
 
     def update_sensors(self):
         self.create_sensors()
@@ -1262,7 +1263,7 @@ class CarRobot:
                 ]
                 if self.path:
                     self.current_target = self.path.pop(0)
-                    logger.debug(f"Set current_target to {self.current_target}")
+                    logger.info(f"Set current_target to {self.current_target}")
                 self.destination_name = "Start"
                 self.moving = True
                 self.is_returning_to_start = True
@@ -1317,6 +1318,7 @@ class CarRobot:
             self.angle = original_angle
             self.update_sensors()
             self.state_reason = "Cannot rotate due to collision"
+            logger.info("Rotation blocked due to collision.")
 
     def rotate_towards_target(self, target_angle, elapsed_time):
         angle_diff = (target_angle - self.angle + 360) % 360
@@ -1343,6 +1345,7 @@ class CarRobot:
             self.x = new_x
             self.y = new_y
             self.update_sensors()
+            logger.info(f"Moved to ({self.x}, {self.y})")
         else:
             logger.warning("Collision detected! Movement blocked.")
 
@@ -1357,7 +1360,7 @@ class CarRobot:
             waypoint_name = self.get_waypoint_name(self.current_target)
             if waypoint_name:
                 self.current_location_name = waypoint_name
-                logger.debug(f"Updated current_location_name to {waypoint_name}")
+                logger.info(f"Updated current_location_name to {waypoint_name}")
             if self.path:
                 self.current_target = self.path.pop(0)
                 self.state_reason = f"Moving towards waypoint {self.get_waypoint_name(self.current_target)}"
@@ -1418,11 +1421,11 @@ class CarRobot:
             ]
             if self.path:
                 self.current_target = self.path.pop(0)
-                logger.debug(f"Path found for {path_key}: {self.path}")
+                logger.info(f"Path found for {path_key}: {self.path}")
         else:
             self.current_target = target_point
             self.path = []
-            logger.debug(f"No predefined path for {path_key}. Directly setting target.")
+            logger.info(f"No predefined path for {path_key}. Directly setting target.")
         logger.info(f"Set target for {destination_name}: {self.current_target}")
 
     def update(self):
@@ -1627,7 +1630,7 @@ class CarRobot:
                         else:
                             logger.warning(f"Unknown location: {location_normalized}")
                 elif command == "user_choice_done":
-                    logger.debug("Received 'user_choice_done' command.")
+                    logger.info("Received 'user_choice_done' command.")
                     self.return_to_start()
                     response_queue.put("Goodbye, going to start point.")
                 elif command == "user_choice_another":
@@ -1805,8 +1808,8 @@ class Game:
         )
 
         # Debugging: Log the rect dimensions
-        logger.debug(f"Outer Rect: {outer_rect}")
-        logger.debug(f"Inner Rect: {inner_rect}")
+        logger.info(f"Outer Rect: {outer_rect}")
+        logger.info(f"Inner Rect: {inner_rect}")
 
         # 1) Outer walls: Everything outside the outer_rect
         # Split into four rectangles: top, bottom, left, right
@@ -1833,7 +1836,7 @@ class Game:
             if rect.width <= 0 or rect.height <= 0:
                 logger.error(f"Invalid wall dimensions: {rect}")
             else:
-                logger.debug(f"Valid wall created: {rect}")
+                logger.info(f"Valid wall created: {rect}")
 
         return walls
 
@@ -1925,7 +1928,7 @@ class Game:
 
         # Debugging: Log the scaled waypoints
         for name, pos in self.waypoint_dict.items():
-            logger.debug(f"Waypoint {name}: {pos}")
+            logger.info(f"Waypoint {name}: {pos}")
 
     def draw_walls(self, camera):
         for wall in self.walls:
@@ -1988,7 +1991,7 @@ class Game:
                         else:
                             logger.warning(f"Unknown location: {location_normalized}")
                 elif command == "user_choice_done":
-                    logger.debug("Received 'user_choice_done' command.")
+                    logger.info("Received 'user_choice_done' command.")
                     self.car.return_to_start()
                     response_queue.put("Goodbye, going to start point.")
                 elif command == "user_choice_another":
@@ -2045,7 +2048,7 @@ class Game:
                         # Zoom in with upper limit
                         if self.camera.zoom < 5.0:
                             self.camera.zoom += 0.5  # Increment zoom
-                            logger.debug(f"Zoom increased to {self.camera.zoom}")
+                            logger.info(f"Zoom increased to {self.camera.zoom}")
                     elif (
                         event.key == pygame.K_MINUS or event.key == pygame.K_UNDERSCORE
                     ):
@@ -2054,7 +2057,7 @@ class Game:
                             self.camera.zoom = max(
                                 0.5, self.camera.zoom - 0.5
                             )  # Decrement zoom with a minimum limit
-                            logger.debug(f"Zoom decreased to {self.camera.zoom}")
+                            logger.info(f"Zoom decreased to {self.camera.zoom}")
 
             self.process_commands()
             self.process_responses()
@@ -2067,12 +2070,12 @@ class Game:
             if current_moving_state != self.previous_moving_state:
                 if current_moving_state:
                     self.send_command("START_SERVO")
-                    logger.debug(
+                    logger.info(
                         "Command 'START_SERVO' sent due to state transition to MOVING."
                     )
                 else:
                     self.send_command("STOP_SERVO")
-                    logger.debug(
+                    logger.info(
                         "Command 'STOP_SERVO' sent due to state transition to STOPPED."
                     )
             self.previous_moving_state = current_moving_state
