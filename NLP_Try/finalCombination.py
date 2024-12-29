@@ -95,7 +95,7 @@ SENSOR_LENGTH = max(
 
 SENSOR_ANGLES = [-30, 0, 30]
 WAYPOINT_THRESHOLD = 1  # pixels (increased from 2)
-FPS = 60
+FPS = 30
 
 SERIAL_PORT = "COM5"  # Update this to your Arduino's serial port
 BAUD_RATE = 115200
@@ -110,13 +110,13 @@ logger = logging.getLogger(__name__)
 
 # -------------------- Flask App Setup ---------------------#
 
-# Initialize NLP pipeline
+# Initialize NLP pipeline with a smaller model
 nlp = pipeline(
     "zero-shot-classification",
-    model="microsoft/deberta-base-mnli",
-    tokenizer="microsoft/deberta-base-mnli",
+    model="valhalla/distilbart-mnli-12-3",
+    tokenizer="valhalla/distilbart-mnli-12-3",
     framework="pt",
-    device=-1,  # CPU
+    device=-1,  # Use GPU if available by setting device=0
 )
 
 # Define buildings and rooms
