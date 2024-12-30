@@ -95,7 +95,7 @@ SENSOR_LENGTH = max(
 
 SENSOR_ANGLES = [-30, 0, 30]
 WAYPOINT_THRESHOLD = 1  # pixels (increased from 2)
-FPS = 60
+FPS = 30
 
 SERIAL_PORT = "COM5"  # Update this to your Arduino's serial port
 BAUD_RATE = 115200
