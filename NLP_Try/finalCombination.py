@@ -113,8 +113,8 @@ logger = logging.getLogger(__name__)
 # Initialize NLP pipeline
 nlp = pipeline(
     "zero-shot-classification",
-    model="microsoft/deberta-base-mnli",
-    tokenizer="microsoft/deberta-base-mnli",
+    model="valhalla/distilbart-mnli-12-3",
+    tokenizer="valhalla/distilbart-mnli-12-3",
     framework="pt",
     device=-1,  # CPU
 )
@@ -388,6 +388,7 @@ executor = ThreadPoolExecutor(max_workers=4)
 
 @lru_cache(maxsize=128)
 def classify_command_cached(command_text):
+    start_time = time.perf_counter()  # Start timing
     result = nlp(
         command_text,
         candidate_labels=tuple(labels),
@@ -400,6 +401,11 @@ def classify_command_cached(command_text):
         for label, score in zip(result["labels"], result["scores"])
         if score > confidence_threshold
     ]
+    end_time = time.perf_counter()  # End timing
+    elapsed_time = end_time - start_time
+    logger.info(
+        f"Classification took {elapsed_time:.4f} seconds for command: '{command_text}'"
+    )
     return matched_labels[0] if matched_labels else "none"
 
 
@@ -1347,12 +1353,14 @@ class CarRobot:
         rotation_speed_per_frame = (
             CAR_ROTATION_SPEED * elapsed_time
         )  # degrees per frame
-        if abs(angle_diff) < rotation_speed_per_frame:
-            angle_change = angle_diff
-        elif angle_diff > 0:
-            angle_change = rotation_speed_per_frame
+        if abs(angle_diff) > rotation_speed_per_frame:
+            angle_change = (
+                rotation_speed_per_frame
+                if angle_diff > 0
+                else -rotation_speed_per_frame
+            )
         else:
-            angle_change = -rotation_speed_per_frame
+            angle_change = angle_diff
         self.rotate(angle_change)
 
     def move_forward(self, elapsed_time):
@@ -1642,7 +1650,7 @@ class CarRobot:
                             self.waypoint_dict.get(location_normalized),
                         )
                         if target_point:
-                            self.set_target(target_point, location_normalized)
+                            self.car.set_target(target_point, location_normalized)
                             logger.info(
                                 f"Setting target to {location_normalized}: {target_point}"
                             )
@@ -1651,10 +1659,10 @@ class CarRobot:
                             logger.warning(f"Unknown location: {location_normalized}")
                 elif command == "user_choice_done":
                     logger.info("Received 'user_choice_done' command.")
-                    self.return_to_start()
+                    self.car.return_to_start()
                     response_queue.put("Goodbye, going to start point.")
                 elif command == "user_choice_another":
-                    self.state_reason = "Waiting for new command"
+                    self.car.state_reason = "Waiting for new command"
                     response_queue.put("How may I help you further?")
         except queue.Empty:
             pass
