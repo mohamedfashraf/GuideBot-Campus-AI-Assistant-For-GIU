@@ -20,6 +20,7 @@ from datetime import datetime
 import re
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
+import torch
 
 # Initialize thread-safe queues for inter-thread communication
 command_queue = queue.Queue()
@@ -110,14 +111,20 @@ logger = logging.getLogger(__name__)
 
 # -------------------- Flask App Setup ---------------------#
 
-# Initialize NLP pipeline with a smaller model
+# Initialize NLP pipeline
+device = 0 if torch.cuda.is_available() else -1
 nlp = pipeline(
     "zero-shot-classification",
     model="valhalla/distilbart-mnli-12-3",
     tokenizer="valhalla/distilbart-mnli-12-3",
     framework="pt",
-    device=-1,  # Use GPU if available by setting device=0
+    device=device,
 )
+if device == 0:
+    logger.info("NLP pipeline is using GPU.")
+else:
+    logger.info("NLP pipeline is using CPU.")
+
 
 # Define buildings and rooms
 VALID_BUILDINGS = {
@@ -222,9 +229,10 @@ for doctor in VALID_DOCTORS:
         ]
     )
 
-labels.extend(DAYS_OF_WEEK)
-labels.append("now")
+# Removed "now" from labels to prevent misclassification with "yes"
+# labels.append("now")  # Removed to avoid confusion
 
+labels.extend(DAYS_OF_WEEK)
 labels.extend(
     [
         "giu",
@@ -286,7 +294,9 @@ def check_room_availability(room):
                 "opens_at": opening_time,
                 "closes_at": closing_time,
             }
-    return {"is_open": True}
+    else:
+        # No specific schedule for this room, assume always open without times
+        return {"is_open": True}
 
 
 def get_doctor_schedule(doctor, day):
@@ -385,18 +395,49 @@ executor = ThreadPoolExecutor(max_workers=4)
 
 @lru_cache(maxsize=128)
 def classify_command_cached(command_text):
-    result = nlp(
-        command_text,
-        candidate_labels=tuple(labels),
-        hypothesis_template="This text is about {}.",
-        multi_label=True,
-    )
+    overall_start_time = time.perf_counter()  # Start overall timing
+    logger.info(f"[Classification] Starting classification for: '{command_text}'")
+
+    # Start timing for NLP pipeline
+    pipeline_start_time = time.perf_counter()
+    try:
+        result = nlp(
+            command_text,
+            candidate_labels=tuple(labels),
+            hypothesis_template="This text is about {}.",
+            multi_label=True,
+        )
+        pipeline_end_time = time.perf_counter()
+        pipeline_elapsed = pipeline_end_time - pipeline_start_time
+        logger.info(
+            f"[Classification] NLP pipeline processing took {pipeline_elapsed:.4f} seconds"
+        )
+    except Exception as e:
+        pipeline_end_time = time.perf_counter()
+        pipeline_elapsed = pipeline_end_time - pipeline_start_time
+        logger.error(
+            f"[Classification] Error during NLP pipeline processing: {e} (took {pipeline_elapsed:.4f} seconds)"
+        )
+        return "none"
+
+    # Start timing for post-processing
+    post_start_time = time.perf_counter()
     confidence_threshold = 0.3
     matched_labels = [
         label
         for label, score in zip(result["labels"], result["scores"])
         if score > confidence_threshold
     ]
+    post_end_time = time.perf_counter()
+    post_elapsed = post_end_time - post_start_time
+    logger.info(f"[Classification] Post-processing took {post_elapsed:.4f} seconds")
+
+    overall_end_time = time.perf_counter()
+    overall_elapsed = overall_end_time - overall_start_time
+    logger.info(
+        f"[Classification] Overall classification took {overall_elapsed:.4f} seconds for command: '{command_text}'"
+    )
+
     return matched_labels[0] if matched_labels else "none"
 
 
@@ -466,9 +507,11 @@ def doctor_availability_endpoint():
 
 @app.route("/command", methods=["POST"])
 def handle_command():
+    start_time = time.perf_counter()  # Start timing
     data = request.json
     logger.info(f"Received data: {data}")
     command_text = data.get("text", "").strip()
+
     if command_text:
         logger.info(f"Command received: {command_text}")
         global pending_action
@@ -482,15 +525,27 @@ def handle_command():
             or current_pending.startswith("ask_for_day_room_")
             or current_pending.startswith("ask_for_day_doctor_")
         ):
-            return open_application(command_text, command_text)
+            response = open_application(current_pending, command_text)
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            logger.info(f"handle_command took {elapsed_time:.4f} seconds")
+            return response  # Return the Response object directly
 
         # Classify the command asynchronously
         future = executor.submit(classify_command_cached, command_text)
         predicted_label = future.result()
         logger.info(f"Matched label: {predicted_label}")
 
-        return open_application(predicted_label, command_text)
+        response = open_application(predicted_label, command_text)
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        logger.info(f"handle_command took {elapsed_time:.4f} seconds")
 
+        return response  # Return the Response object directly
+
+    end_time = time.perf_counter()
+    elapsed_time = end_time - start_time
+    logger.info(f"handle_command took {elapsed_time:.4f} seconds")
     return jsonify({"response": "No command received."})
 
 
@@ -554,12 +609,13 @@ def open_application(command, original_command_text):
         elif is_negative(original_command_text):
             response = "Okay, let me know if you need anything else."
             with pending_action_lock:
-                pending_action = "ask_if_help_needed"
+                pending_action = None  # **Clear the pending_action**
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
         else:
             response = "I'm sorry, I didn't catch that. Please say yes or no."
+            # Do NOT clear pending_action to continue awaiting a valid response
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -572,12 +628,10 @@ def open_application(command, original_command_text):
         elif is_negative(original_command_text):
             response = "Okay, feel free to ask if you need any assistance. Goodbye!"
             with pending_action_lock:
-                pending_action = None
+                pending_action = None  # **Clear the pending_action**
         else:
             response = "I'm sorry, I didn't catch that. Please say yes or no."
-            with pending_action_lock:
-                pending_action = None
-            logger.debug("User provided a direct request instead of YES/NO.")
+            # Do NOT clear pending_action to continue awaiting a valid response
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -605,12 +659,13 @@ def open_application(command, original_command_text):
         elif is_negative(original_command_text):
             response = "Okay, let me know if you need anything else."
             with pending_action_lock:
-                pending_action = "ask_if_help_needed"
+                pending_action = None  # **Clear the pending_action**
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
         else:
             response = "I'm sorry, I didn't catch that. Please say yes or no."
+            # Do NOT clear pending_action to continue awaiting a valid response
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -620,7 +675,7 @@ def open_application(command, original_command_text):
         if is_negative(original_command_text):
             response = "Okay, let me know if you need anything else."
             with pending_action_lock:
-                pending_action = "ask_if_help_needed"
+                pending_action = None  # **Clear the pending_action**
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -630,9 +685,17 @@ def open_application(command, original_command_text):
             opening_times = check_room_availability(room)
             if opening_times:
                 if opening_times["is_open"]:
-                    response = f"The {room.replace('_', ' ')} opens at {opening_times['opens_at']} and closes at {opening_times['closes_at']} on {day_in_text.capitalize()}."
+                    # **Modified to conditionally include times**
+                    if "opens_at" in opening_times and "closes_at" in opening_times:
+                        response = f"The {room.replace('_', ' ')} is open from {opening_times['opens_at']} to {opening_times['closes_at']} on {day_in_text.capitalize()}."
+                    else:
+                        response = f"The {room.replace('_', ' ')} is open on {day_in_text.capitalize()}."
                 else:
-                    response = f"The {room.replace('_', ' ')} is closed on {day_in_text.capitalize()} and will open next at {opening_times['opens_at']}."
+                    # **Modified to conditionally include opening time**
+                    if "opens_at" in opening_times:
+                        response = f"The {room.replace('_', ' ')} is closed on {day_in_text.capitalize()} and will open next at {opening_times['opens_at']}."
+                    else:
+                        response = f"The {room.replace('_', ' ')} is currently closed on {day_in_text.capitalize()}."
                 response += " Is there anything else I can assist you with?"
                 with pending_action_lock:
                     pending_action = "ask_if_help_needed"
@@ -650,6 +713,7 @@ def open_application(command, original_command_text):
             response = (
                 "I'm sorry, I didn't catch the day. Please specify a day of the week."
             )
+            # Do NOT clear pending_action to continue awaiting a valid response
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -659,7 +723,7 @@ def open_application(command, original_command_text):
         if is_negative(original_command_text):
             response = "Okay, let me know if you need anything else."
             with pending_action_lock:
-                pending_action = "ask_if_help_needed"
+                pending_action = None  # **Clear the pending_action**
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -685,6 +749,7 @@ def open_application(command, original_command_text):
             response = (
                 "I'm sorry, I didn't catch the day. Please specify a day of the week."
             )
+            # Do NOT clear pending_action to continue awaiting a valid response
             response_queue.put(response)
             logger.info(f"Responding: {response}")
             return jsonify({"response": response})
@@ -715,19 +780,23 @@ def open_application(command, original_command_text):
                     if day_in_text:
                         opening_times = check_room_availability(rm)
                         if opening_times["is_open"]:
-                            response = f"The {rm.replace('_', ' ')} is open from {opening_times['opens_at']} to {opening_times['closes_at']} today."
+                            # **Modified to conditionally include times**
+                            if (
+                                "opens_at" in opening_times
+                                and "closes_at" in opening_times
+                            ):
+                                response = f"The {rm.replace('_', ' ')} is open from {opening_times['opens_at']} to {opening_times['closes_at']} today."
+                            else:
+                                response = f"The {rm.replace('_', ' ')} is open today."
                         else:
-                            response = f"The {rm.replace('_', ' ')} is currently closed and will open tomorrow at {opening_times['opens_at']}."
+                            # **Modified to conditionally include opening time**
+                            if "opens_at" in opening_times:
+                                response = f"The {rm.replace('_', ' ')} is closed today and will open tomorrow at {opening_times['opens_at']}."
+                            else:
+                                response = f"The {rm.replace('_', ' ')} is currently closed today."
                         response += " Is there anything else I can assist you with?"
                         with pending_action_lock:
                             pending_action = "ask_if_help_needed"
-                        response_queue.put(response)
-                        logger.info(f"Responding: {response}")
-                        return jsonify({"response": response})
-                    else:
-                        response = "Do you need the opening times for a specific day?"
-                        with pending_action_lock:
-                            pending_action = f"ask_for_day_room_{rm}"
                         response_queue.put(response)
                         logger.info(f"Responding: {response}")
                         return jsonify({"response": response})
@@ -990,20 +1059,23 @@ def open_application(command, original_command_text):
     if room:
         availability = check_room_availability(room)
         if availability["is_open"]:
-            response = f"The {room.replace('_', ' ')} is open. Would you like me to guide you there?"
+            # **Modified to conditionally include times**
+            if "opens_at" in availability and "closes_at" in availability:
+                response = f"The {room.replace('_', ' ')} is open from {availability['opens_at']} to {availability['closes_at']}."
+            else:
+                response = f"The {room.replace('_', ' ')} is open."
+            response += " Would you like me to guide you there?"
             with pending_action_lock:
                 pending_action = f"go_to_{room}"
             response_queue.put(response)
             logger.info(f"Responding: {response}")
         else:
-            next_open_day, next_open_time = get_next_opening(room)
-            if next_open_day and next_open_time:
-                response = (
-                    f"The {room.replace('_', ' ')} is currently closed and will open on "
-                    f"{next_open_day.capitalize()} at {next_open_time}. Would you like help with something else?"
-                )
+            # **Modified to conditionally include opening time**
+            if "opens_at" in availability:
+                response = f"The {room.replace('_', ' ')} is currently closed and will open next at {availability['opens_at']}."
             else:
-                response = f"The {room.replace('_', ' ')} is currently closed. Would you like help with something else?"
+                response = f"The {room.replace('_', ' ')} is currently closed."
+            response += " Would you like help with something else?"
             with pending_action_lock:
                 pending_action = "ask_if_help_needed"
             response_queue.put(response)
@@ -1327,12 +1399,14 @@ class CarRobot:
         rotation_speed_per_frame = (
             CAR_ROTATION_SPEED * elapsed_time
         )  # degrees per frame
-        if abs(angle_diff) < rotation_speed_per_frame:
-            angle_change = angle_diff
-        elif angle_diff > 0:
-            angle_change = rotation_speed_per_frame
+        if abs(angle_diff) > rotation_speed_per_frame:
+            angle_change = (
+                rotation_speed_per_frame
+                if angle_diff > 0
+                else -rotation_speed_per_frame
+            )
         else:
-            angle_change = -rotation_speed_per_frame
+            angle_change = angle_diff
         self.rotate(angle_change)
 
     def move_forward(self, elapsed_time):
@@ -1622,7 +1696,7 @@ class CarRobot:
                             self.waypoint_dict.get(location_normalized),
                         )
                         if target_point:
-                            self.set_target(target_point, location_normalized)
+                            self.car.set_target(target_point, location_normalized)
                             logger.info(
                                 f"Setting target to {location_normalized}: {target_point}"
                             )
@@ -1631,10 +1705,10 @@ class CarRobot:
                             logger.warning(f"Unknown location: {location_normalized}")
                 elif command == "user_choice_done":
                     logger.info("Received 'user_choice_done' command.")
-                    self.return_to_start()
+                    self.car.return_to_start()
                     response_queue.put("Goodbye, going to start point.")
                 elif command == "user_choice_another":
-                    self.state_reason = "Waiting for new command"
+                    self.car.state_reason = "Waiting for new command"
                     response_queue.put("How may I help you further?")
         except queue.Empty:
             pass
@@ -1669,6 +1743,101 @@ class CarRobot:
             target=open_browser_after_delay, args=(url,), daemon=True
         ).start()
         app.run(debug=False, port=5000, use_reloader=False)
+
+    def run(self):
+        flask_thread = threading.Thread(target=self.run_flask_app, daemon=True)
+        flask_thread.start()
+        running = True
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    mouse_x, mouse_y = pygame.mouse.get_pos()
+                    if mouse_y < HEIGHT:
+                        self.choose_waypoint(mouse_x, mouse_y)
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
+                        # Zoom in with upper limit
+                        if self.camera.zoom < 5.0:
+                            self.camera.zoom += 0.5  # Increment zoom
+                            logger.info(f"Zoom increased to {self.camera.zoom}")
+                            self.update_zoom_related_elements()
+                    elif (
+                        event.key == pygame.K_MINUS or event.key == pygame.K_UNDERSCORE
+                    ):
+                        # Zoom out with lower limit
+                        if self.camera.zoom > 0.5:
+                            self.camera.zoom = max(
+                                0.5, self.camera.zoom - 0.5
+                            )  # Decrement zoom with a minimum limit
+                            logger.info(f"Zoom decreased to {self.camera.zoom}")
+                            self.update_zoom_related_elements()
+
+            self.process_commands()
+            self.process_responses()
+
+            # Update camera to follow the robot
+            self.camera.update((self.car.x, self.car.y))
+
+            self.car.update()
+            current_moving_state = self.car.moving
+            if current_moving_state != self.previous_moving_state:
+                if current_moving_state:
+                    self.send_command("START_SERVO")
+                    logger.info(
+                        "Command 'START_SERVO' sent due to state transition to MOVING."
+                    )
+                else:
+                    self.send_command("STOP_SERVO")
+                    logger.info(
+                        "Command 'STOP_SERVO' sent due to state transition to STOPPED."
+                    )
+            self.previous_moving_state = current_moving_state
+
+            # Clear the main simulation area (top 600x450) with white background
+            simulation_rect = pygame.Rect(0, 0, WIDTH, HEIGHT)
+            self.screen.fill(WHITE, simulation_rect)
+
+            # Draw corridor walls and polygons
+            self.draw_walls(self.camera)
+            # Draw the robot
+            self.car.draw(self.screen, self.camera)
+            # Draw status text and zoom indicators in the bottom area
+            self.car.draw_status(self.screen)
+
+            # Draw the bottom status area with a white background
+            bottom_rect = pygame.Rect(0, HEIGHT, WIDTH, BUTTON_AREA_HEIGHT)
+            pygame.draw.rect(self.screen, WHITE, bottom_rect)
+
+            # Ensure status texts are drawn on top of the white background
+            self.car.draw_status(self.screen)
+
+            pygame.display.flip()
+            self.clock.tick(FPS)
+
+        self.serial_reader.stop()
+        self.serial_reader.join()
+        pygame.quit()
+        sys.exit()
+
+    def draw_grid(self):
+        grid_color = DARK_GRAY
+        grid_spacing = 50  # pixels
+
+        for x in range(0, WIDTH, grid_spacing):
+            pygame.draw.line(self.screen, grid_color, (x, 0), (x, HEIGHT), 1)
+        for y in range(0, HEIGHT, grid_spacing):
+            pygame.draw.line(self.screen, grid_color, (0, y), (WIDTH, y), 1)
+
+    def update_zoom_related_elements(self):
+        """Update elements that depend on zoom level, such as sensors."""
+        self.car.update_sensors()
+
+
+def open_browser_after_delay(url, delay=1):
+    time.sleep(delay)
+    webbrowser.open(url)
 
 
 class SerialReader(threading.Thread):
@@ -2049,6 +2218,7 @@ class Game:
                         if self.camera.zoom < 5.0:
                             self.camera.zoom += 0.5  # Increment zoom
                             logger.info(f"Zoom increased to {self.camera.zoom}")
+                            self.update_zoom_related_elements()
                     elif (
                         event.key == pygame.K_MINUS or event.key == pygame.K_UNDERSCORE
                     ):
@@ -2058,6 +2228,7 @@ class Game:
                                 0.5, self.camera.zoom - 0.5
                             )  # Decrement zoom with a minimum limit
                             logger.info(f"Zoom decreased to {self.camera.zoom}")
+                            self.update_zoom_related_elements()
 
             self.process_commands()
             self.process_responses()
@@ -2114,6 +2285,10 @@ class Game:
             pygame.draw.line(self.screen, grid_color, (x, 0), (x, HEIGHT), 1)
         for y in range(0, HEIGHT, grid_spacing):
             pygame.draw.line(self.screen, grid_color, (0, y), (WIDTH, y), 1)
+
+    def update_zoom_related_elements(self):
+        """Update elements that depend on zoom level, such as sensors."""
+        self.car.update_sensors()
 
 
 def open_browser_after_delay(url, delay=1):
