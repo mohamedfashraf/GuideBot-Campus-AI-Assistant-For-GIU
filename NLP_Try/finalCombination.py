@@ -20,6 +20,7 @@ from datetime import datetime
 import re
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
+import torch
 
 # Initialize thread-safe queues for inter-thread communication
 command_queue = queue.Queue()
@@ -111,13 +112,19 @@ logger = logging.getLogger(__name__)
 # -------------------- Flask App Setup ---------------------#
 
 # Initialize NLP pipeline
+device = 0 if torch.cuda.is_available() else -1
 nlp = pipeline(
     "zero-shot-classification",
     model="valhalla/distilbart-mnli-12-3",
     tokenizer="valhalla/distilbart-mnli-12-3",
     framework="pt",
-    device=-1,  # CPU
+    device=device,
 )
+if device == 0:
+    logger.info("NLP pipeline is using GPU.")
+else:
+    logger.info("NLP pipeline is using CPU.")
+
 
 # Define buildings and rooms
 VALID_BUILDINGS = {
@@ -388,24 +395,49 @@ executor = ThreadPoolExecutor(max_workers=4)
 
 @lru_cache(maxsize=128)
 def classify_command_cached(command_text):
-    start_time = time.perf_counter()  # Start timing
-    result = nlp(
-        command_text,
-        candidate_labels=tuple(labels),
-        hypothesis_template="This text is about {}.",
-        multi_label=True,
-    )
+    overall_start_time = time.perf_counter()  # Start overall timing
+    logger.info(f"[Classification] Starting classification for: '{command_text}'")
+
+    # Start timing for NLP pipeline
+    pipeline_start_time = time.perf_counter()
+    try:
+        result = nlp(
+            command_text,
+            candidate_labels=tuple(labels),
+            hypothesis_template="This text is about {}.",
+            multi_label=True,
+        )
+        pipeline_end_time = time.perf_counter()
+        pipeline_elapsed = pipeline_end_time - pipeline_start_time
+        logger.info(
+            f"[Classification] NLP pipeline processing took {pipeline_elapsed:.4f} seconds"
+        )
+    except Exception as e:
+        pipeline_end_time = time.perf_counter()
+        pipeline_elapsed = pipeline_end_time - pipeline_start_time
+        logger.error(
+            f"[Classification] Error during NLP pipeline processing: {e} (took {pipeline_elapsed:.4f} seconds)"
+        )
+        return "none"
+
+    # Start timing for post-processing
+    post_start_time = time.perf_counter()
     confidence_threshold = 0.3
     matched_labels = [
         label
         for label, score in zip(result["labels"], result["scores"])
         if score > confidence_threshold
     ]
-    end_time = time.perf_counter()  # End timing
-    elapsed_time = end_time - start_time
+    post_end_time = time.perf_counter()
+    post_elapsed = post_end_time - post_start_time
+    logger.info(f"[Classification] Post-processing took {post_elapsed:.4f} seconds")
+
+    overall_end_time = time.perf_counter()
+    overall_elapsed = overall_end_time - overall_start_time
     logger.info(
-        f"Classification took {elapsed_time:.4f} seconds for command: '{command_text}'"
+        f"[Classification] Overall classification took {overall_elapsed:.4f} seconds for command: '{command_text}'"
     )
+
     return matched_labels[0] if matched_labels else "none"
 
 
@@ -475,9 +507,11 @@ def doctor_availability_endpoint():
 
 @app.route("/command", methods=["POST"])
 def handle_command():
+    start_time = time.perf_counter()  # Start timing
     data = request.json
     logger.info(f"Received data: {data}")
     command_text = data.get("text", "").strip()
+
     if command_text:
         logger.info(f"Command received: {command_text}")
         global pending_action
@@ -491,15 +525,27 @@ def handle_command():
             or current_pending.startswith("ask_for_day_room_")
             or current_pending.startswith("ask_for_day_doctor_")
         ):
-            return open_application(current_pending, command_text)  # **Updated**
+            response = open_application(current_pending, command_text)
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            logger.info(f"handle_command took {elapsed_time:.4f} seconds")
+            return response  # Return the Response object directly
 
         # Classify the command asynchronously
         future = executor.submit(classify_command_cached, command_text)
         predicted_label = future.result()
         logger.info(f"Matched label: {predicted_label}")
 
-        return open_application(predicted_label, command_text)
+        response = open_application(predicted_label, command_text)
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        logger.info(f"handle_command took {elapsed_time:.4f} seconds")
 
+        return response  # Return the Response object directly
+
+    end_time = time.perf_counter()
+    elapsed_time = end_time - start_time
+    logger.info(f"handle_command took {elapsed_time:.4f} seconds")
     return jsonify({"response": "No command received."})
 
 
