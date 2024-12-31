@@ -287,7 +287,9 @@ def check_room_availability(room):
                 "opens_at": opening_time,
                 "closes_at": closing_time,
             }
-    return {"is_open": True}
+    else:
+        # No specific schedule for this room, assume always open without times
+        return {"is_open": True}
 
 
 def get_doctor_schedule(doctor, day):
@@ -483,7 +485,7 @@ def handle_command():
             or current_pending.startswith("ask_for_day_room_")
             or current_pending.startswith("ask_for_day_doctor_")
         ):
-            return open_application(command_text, command_text)
+            return open_application(current_pending, command_text)  # **Updated**
 
         # Classify the command asynchronously
         future = executor.submit(classify_command_cached, command_text)
@@ -631,9 +633,17 @@ def open_application(command, original_command_text):
             opening_times = check_room_availability(room)
             if opening_times:
                 if opening_times["is_open"]:
-                    response = f"The {room.replace('_', ' ')} opens at {opening_times['opens_at']} and closes at {opening_times['closes_at']} on {day_in_text.capitalize()}."
+                    # **Modified to conditionally include times**
+                    if "opens_at" in opening_times and "closes_at" in opening_times:
+                        response = f"The {room.replace('_', ' ')} is open from {opening_times['opens_at']} to {opening_times['closes_at']} on {day_in_text.capitalize()}."
+                    else:
+                        response = f"The {room.replace('_', ' ')} is open on {day_in_text.capitalize()}."
                 else:
-                    response = f"The {room.replace('_', ' ')} is closed on {day_in_text.capitalize()} and will open next at {opening_times['opens_at']}."
+                    # **Modified to conditionally include opening time**
+                    if "opens_at" in opening_times:
+                        response = f"The {room.replace('_', ' ')} is closed on {day_in_text.capitalize()} and will open next at {opening_times['opens_at']}."
+                    else:
+                        response = f"The {room.replace('_', ' ')} is currently closed on {day_in_text.capitalize()}."
                 response += " Is there anything else I can assist you with?"
                 with pending_action_lock:
                     pending_action = "ask_if_help_needed"
@@ -718,19 +728,23 @@ def open_application(command, original_command_text):
                     if day_in_text:
                         opening_times = check_room_availability(rm)
                         if opening_times["is_open"]:
-                            response = f"The {rm.replace('_', ' ')} is open from {opening_times['opens_at']} to {opening_times['closes_at']} today."
+                            # **Modified to conditionally include times**
+                            if (
+                                "opens_at" in opening_times
+                                and "closes_at" in opening_times
+                            ):
+                                response = f"The {rm.replace('_', ' ')} is open from {opening_times['opens_at']} to {opening_times['closes_at']} today."
+                            else:
+                                response = f"The {rm.replace('_', ' ')} is open today."
                         else:
-                            response = f"The {rm.replace('_', ' ')} is currently closed and will open tomorrow at {opening_times['opens_at']}."
+                            # **Modified to conditionally include opening time**
+                            if "opens_at" in opening_times:
+                                response = f"The {rm.replace('_', ' ')} is closed today and will open tomorrow at {opening_times['opens_at']}."
+                            else:
+                                response = f"The {rm.replace('_', ' ')} is currently closed today."
                         response += " Is there anything else I can assist you with?"
                         with pending_action_lock:
                             pending_action = "ask_if_help_needed"
-                        response_queue.put(response)
-                        logger.info(f"Responding: {response}")
-                        return jsonify({"response": response})
-                    else:
-                        response = "Do you need the opening times for a specific day?"
-                        with pending_action_lock:
-                            pending_action = f"ask_for_day_room_{rm}"
                         response_queue.put(response)
                         logger.info(f"Responding: {response}")
                         return jsonify({"response": response})
@@ -993,20 +1007,23 @@ def open_application(command, original_command_text):
     if room:
         availability = check_room_availability(room)
         if availability["is_open"]:
-            response = f"The {room.replace('_', ' ')} is open. Would you like me to guide you there?"
+            # **Modified to conditionally include times**
+            if "opens_at" in availability and "closes_at" in availability:
+                response = f"The {room.replace('_', ' ')} is open from {availability['opens_at']} to {availability['closes_at']}."
+            else:
+                response = f"The {room.replace('_', ' ')} is open."
+            response += " Would you like me to guide you there?"
             with pending_action_lock:
                 pending_action = f"go_to_{room}"
             response_queue.put(response)
             logger.info(f"Responding: {response}")
         else:
-            next_open_day, next_open_time = get_next_opening(room)
-            if next_open_day and next_open_time:
-                response = (
-                    f"The {room.replace('_', ' ')} is currently closed and will open on "
-                    f"{next_open_day.capitalize()} at {next_open_time}. Would you like help with something else?"
-                )
+            # **Modified to conditionally include opening time**
+            if "opens_at" in availability:
+                response = f"The {room.replace('_', ' ')} is currently closed and will open next at {availability['opens_at']}."
             else:
-                response = f"The {room.replace('_', ' ')} is currently closed. Would you like help with something else?"
+                response = f"The {room.replace('_', ' ')} is currently closed."
+            response += " Would you like help with something else?"
             with pending_action_lock:
                 pending_action = "ask_if_help_needed"
             response_queue.put(response)
