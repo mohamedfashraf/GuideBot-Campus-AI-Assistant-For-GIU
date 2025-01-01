@@ -38,5 +38,5 @@ def benchmark_model(model_name, command_text):
 
 if __name__ == "__main__":
     command = "Hey"
-    benchmark_model("facebook/bart-large-mnli", command)
+    benchmark_model("microsoft/deberta-base-mnli", command)
     benchmark_model("valhalla/distilbart-mnli-12-3", command)
