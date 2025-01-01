@@ -115,8 +115,8 @@ logger = logging.getLogger(__name__)
 device = 0 if torch.cuda.is_available() else -1
 nlp = pipeline(
     "zero-shot-classification",
-    model="valhalla/distilbart-mnli-12-3",
-    tokenizer="valhalla/distilbart-mnli-12-3",
+    model="microsoft/deberta-base-mnli",
+    tokenizer="microsoft/deberta-base-mnli",
     framework="pt",
     device=device,
 )
