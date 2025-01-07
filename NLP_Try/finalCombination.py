@@ -592,7 +592,7 @@ def open_application(command, original_command_text):
     if current_pending and current_pending.startswith("go_to_"):
         if is_affirmative(original_command_text):
             location = current_pending[len("go_to_") :]
-            location_normalized = location.replace("-", "_").replace(" ", "_").title()
+            location_normalized = location.replace("-", "_").replace(" ", "_").lower()
             logger.info(f"User confirmed to go to location: {location_normalized}")
             command_queue.put(f"go_to_{location_normalized}")
             if location_normalized.lower() in VALID_DOCTORS:
@@ -1266,50 +1266,50 @@ class CarRobot:
         # Initialize movement trail
         self.previous_positions = []
 
-        # Define waypoint paths for returning to start, including the fix for M215
+        # Define waypoint paths
+        # --- ADDED FOR DEBUG: path logs
         self.waypoint_paths = {
-            ("Start", "M415"): ["M415"],
-            ("M415", "M416"): ["M416"],
-            ("M415", "Start"): ["Start"],
-            ("M416", "Admission"): ["Admission"],
-            ("Admission", "dr_nada"): ["dr_nada"],
+            ("start", "m415"): ["m415"],
+            ("m415", "m416"): ["m416"],
+            ("m415", "start"): ["start"],
+            ("m416", "admission"): ["admission"],
+            ("admission", "dr_nada"): ["dr_nada"],
             ("dr_nada", "dr_omar"): ["dr_omar"],
-            ("dr_omar", "Start"): ["dr_nada", "Admission", "M416", "M415", "Start"],
-            ("Start", "M416"): ["M415", "M416"],
-            ("Start", "Admission"): ["M415", "M416", "Admission"],
-            ("M415", "Admission"): ["M416", "Admission"],
-            ("Admission", "M415"): ["M416", "M415"],
-            ("M416", "M415"): ["M415"],
-            ("M416", "Start"): ["M415", "Start"],
-            ("Admission", "Start"): ["M416", "M415", "Start"],
-            ("Start", "dr_nada"): ["M415", "M416", "Admission", "dr_nada"],
-            ("dr_nada", "Start"): ["Admission", "M416", "M415", "Start"],
-            ("M416", "dr_nada"): ["Admission", "dr_nada"],
-            ("dr_nada", "M416"): ["Admission", "M416"],
-            ("Start", "dr_omar"): ["M415", "M416", "Admission", "dr_nada", "dr_omar"],
-            ("dr_omar", "Start"): ["dr_nada", "Admission", "M416", "M415", "Start"],
-            # Dr Slim's path
+            ("dr_omar", "start"): ["dr_nada", "admission", "m416", "m415", "start"],
+            ("start", "m416"): ["m415", "m416"],
+            ("start", "admission"): ["m415", "m416", "admission"],
+            ("m415", "admission"): ["m416", "admission"],
+            ("admission", "m415"): ["m416", "m415"],
+            ("m416", "m415"): ["m415"],
+            ("m416", "start"): ["m415", "start"],
+            ("admission", "start"): ["m416", "m415", "start"],
+            ("start", "dr_nada"): ["m415", "m416", "admission", "dr_nada"],
+            ("dr_nada", "start"): ["admission", "m416", "m415", "start"],
+            ("m416", "dr_nada"): ["admission", "dr_nada"],
+            ("dr_nada", "m416"): ["admission", "m416"],
+            ("start", "dr_omar"): ["m415", "m416", "admission", "dr_nada", "dr_omar"],
+            ("dr_omar", "start"): ["dr_nada", "admission", "m416", "m415", "start"],
             ("dr_nada", "dr_slim"): ["dr_slim"],
             ("dr_slim", "dr_nada"): ["right_corner", "dr_omar", "dr_nada"],
             ("dr_slim", "dr_omar"): ["right_corner", "dr_omar"],
             ("dr_omar", "dr_slim"): ["right_corner", "dr_slim"],
-            ("Start", "dr_slim"): [
-                "M415",
-                "M416",
-                "Admission",
+            ("start", "dr_slim"): [
+                "m415",
+                "m416",
+                "admission",
                 "dr_nada",
                 "dr_omar",
                 "right_corner",
                 "dr_slim",
             ],
-            ("dr_slim", "Start"): [
+            ("dr_slim", "start"): [
                 "right_corner",
                 "dr_omar",
                 "dr_nada",
-                "Admission",
-                "M416",
-                "M415",
-                "Start",
+                "admission",
+                "m416",
+                "m415",
+                "start",
             ],
         }
 
@@ -1317,70 +1317,49 @@ class CarRobot:
         self.sensors = []
         for angle_offset in SENSOR_ANGLES:
             sensor_angle = (self.angle + angle_offset) % 360
-            # Adjust sensor length based on zoom
-            dynamic_sensor_length = SENSOR_LENGTH_REAL * self.camera.zoom * SCALE
-            sensor_end_x = self.x + dynamic_sensor_length * math.cos(
-                math.radians(sensor_angle)
-            )
-            sensor_end_y = self.y - dynamic_sensor_length * math.sin(
-                math.radians(sensor_angle)
-            )
-            self.sensors.append((sensor_angle, (sensor_end_x, sensor_end_y)))
-            # Removed less critical debug logs
-            # logger.debug(
-            #     f"Sensor at angle {sensor_angle}: End point ({sensor_end_x}, {sensor_end_y})"
-            # )
+            sensor_length = SENSOR_LENGTH_REAL * self.camera.zoom * SCALE
+            sx = self.x + sensor_length * math.cos(math.radians(sensor_angle))
+            sy = self.y - sensor_length * math.sin(math.radians(sensor_angle))
+            self.sensors.append((sensor_angle, (sx, sy)))
+
+    def get_target_angle(self):
+        """
+        Returns the angle (in degrees) from the robot's current position (self.x, self.y)
+        to the current_target (target_x, target_y).
+        """
+        if not self.current_target:
+            return self.angle
+        target_x, target_y = self.current_target
+        dx = target_x - self.x
+        dy = self.y - target_y
+        angle = math.degrees(math.atan2(dy, dx))
+        return angle % 360
 
     def update_sensors(self):
         self.create_sensors()
 
     def check_sensors(self):
         sensor_data = []
-        for sensor_angle, (sensor_end_x, sensor_end_y) in self.sensors:
-            sensor_line = ((self.x, self.y), (sensor_end_x, sensor_end_y))
+        for sensor_angle, (sx, sy) in self.sensors:
+            line_segment = ((self.x, self.y), (sx, sy))
             obstacle_detected = False
             for wall in self.walls:
-                if self.line_rect_intersect(sensor_line, wall.rect):
+                if self.line_rect_intersect(line_segment, wall.rect):
                     obstacle_detected = True
                     break
             sensor_data.append((sensor_angle, obstacle_detected))
         return sensor_data
 
-    def return_to_start(self):
-        if self.current_location_name != "Start":
-            path_key = (self.current_location_name, "Start")
-            if path_key in self.waypoint_paths:
-                self.path = [
-                    self.waypoint_dict[wp_name]
-                    for wp_name in self.waypoint_paths[path_key]
-                ]
-                if self.path:
-                    self.current_target = self.path.pop(0)
-                    logger.info(f"Set current_target to {self.current_target}")
-                self.destination_name = "Start"
-                self.moving = True
-                self.is_returning_to_start = True
-                self.state_reason = "Returning to start via checkpoints"
-                logger.info(
-                    f"Returning to Start via path: {self.waypoint_paths[path_key]}"
-                )
-            else:
-                logger.warning(
-                    f"No return path defined from {self.current_location_name} to Start."
-                )
-
     def line_rect_intersect(self, line, rect):
-        """
-        Check if a sensor line intersects a rectangular wall boundary.
-        """
+        (x1, y1), (x2, y2) = line
         rect_lines = [
             ((rect.left, rect.top), (rect.right, rect.top)),
             ((rect.right, rect.top), (rect.right, rect.bottom)),
             ((rect.right, rect.bottom), (rect.left, rect.bottom)),
             ((rect.left, rect.bottom), (rect.left, rect.top)),
         ]
-        for rect_line in rect_lines:
-            if self.line_line_intersect(line, rect_line):
+        for r_line in rect_lines:
+            if self.line_line_intersect(line, r_line):
                 return True
         return False
 
@@ -1393,15 +1372,6 @@ class CarRobot:
         ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom
         ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom
         return 0 <= ua <= 1 and 0 <= ub <= 1
-
-    def get_target_angle(self):
-        if not self.current_target:
-            return self.angle
-        target_x, target_y = self.current_target
-        dx = target_x - self.x
-        dy = self.y - target_y
-        angle = math.degrees(math.atan2(dy, dx))
-        return angle % 360
 
     def rotate(self, angle_change):
         original_angle = self.angle
@@ -1417,30 +1387,23 @@ class CarRobot:
         angle_diff = (target_angle - self.angle + 360) % 360
         if angle_diff > 180:
             angle_diff -= 360
-        rotation_speed_per_frame = (
-            CAR_ROTATION_SPEED * elapsed_time
-        )  # degrees per frame
-        if abs(angle_diff) > rotation_speed_per_frame:
-            angle_change = (
-                rotation_speed_per_frame
-                if angle_diff > 0
-                else -rotation_speed_per_frame
-            )
+        rotation_speed = CAR_ROTATION_SPEED * elapsed_time
+        if abs(angle_diff) > rotation_speed:
+            angle_change = rotation_speed if angle_diff > 0 else -rotation_speed
         else:
             angle_change = angle_diff
         self.rotate(angle_change)
 
     def move_forward(self, elapsed_time):
-        # Calculate distance to move based on speed and elapsed time
-        distance = self.speed * elapsed_time  # meters
-        distance_pixels = distance * SCALE  # Convert to pixels
-        new_x = self.x + distance_pixels * math.cos(math.radians(self.angle))
-        new_y = self.y - distance_pixels * math.sin(math.radians(self.angle))
+        distance = self.speed * elapsed_time
+        dist_pixels = distance * SCALE
+        new_x = self.x + dist_pixels * math.cos(math.radians(self.angle))
+        new_y = self.y - dist_pixels * math.sin(math.radians(self.angle))
         if not self.check_collision(new_x, new_y):
             self.x = new_x
             self.y = new_y
             self.update_sensors()
-            logger.info(f"Moved to ({self.x}, {self.y})")
+            logger.info(f"Moved to ({self.x:.2f}, {self.y:.2f})")
         else:
             logger.warning("Collision detected! Movement blocked.")
 
@@ -1449,26 +1412,32 @@ class CarRobot:
             return False
         target_x, target_y = self.current_target
         distance = math.hypot(target_x - self.x, target_y - self.y)
-        logger.debug(f"Distance to target: {distance}")
+
+        # --- ADDED DEBUG LOGS ---
+        logger.debug(
+            f"[check_point_reached] Dist to waypoint: {distance:.2f}, threshold={self.threshold}"
+        )
+
         if distance < self.threshold:
             logger.info(f"Reached point ({target_x}, {target_y})")
             waypoint_name = self.get_waypoint_name(self.current_target)
             if waypoint_name:
                 self.current_location_name = waypoint_name
-                logger.info(f"Updated current_location_name to {waypoint_name}")
+                logger.info(f"Updated current_location_name -> {waypoint_name}")
             if self.path:
                 self.current_target = self.path.pop(0)
-                self.state_reason = f"Moving towards waypoint {self.get_waypoint_name(self.current_target)}"
-                logger.info(f"New target set to {self.current_target}")
+                next_wp_name = self.get_waypoint_name(self.current_target)
+                self.state_reason = f"Moving towards waypoint {next_wp_name}"
+                logger.info(f"New target set -> {self.current_target} ({next_wp_name})")
             else:
                 self.current_location_name = self.destination_name
                 self.current_target = None
                 self.moving = False
                 if not self.is_returning_to_start:
-                    prompt_message = f"Reached {self.destination_name.replace('_', ' ')}. Are you done or do you need something else?"
-                    self.prompt_queue.put(prompt_message)
+                    msg = f"Reached {self.destination_name.replace('_', ' ')}. Done or need something else?"
+                    self.prompt_queue.put(msg)
                     self.state_reason = "Awaiting user choice"
-                    logger.info(f"Prompt enqueued: {prompt_message}")
+                    logger.info(f"Prompt enqueued: {msg}")
                 else:
                     self.is_returning_to_start = False
                     self.state_reason = "At Start Point"
@@ -1482,24 +1451,20 @@ class CarRobot:
                 return name
         return None
 
-    def update_mask(self):
-        # Not needed for circle representation
-        return None, None
-
     def check_collision(self, new_x, new_y):
         original_x, original_y = self.x, self.y
         self.x, self.y = new_x, new_y
+
         collision = False
         for wall in self.walls:
-            # Calculate distance between robot center and wall rect
-            closest_x = max(wall.rect.left, min(self.x, wall.rect.right))
-            closest_y = max(wall.rect.top, min(self.y, wall.rect.bottom))
-            distance = math.hypot(self.x - closest_x, self.y - closest_y)
-            # Use ROBOT_VISUAL_DIAMETER / 2 for collision detection
-            if distance < ROBOT_VISUAL_DIAMETER / 2:
-                logger.warning(f"Collision with wall at position: {wall.rect}")
+            cx = max(wall.rect.left, min(self.x, wall.rect.right))
+            cy = max(wall.rect.top, min(self.y, wall.rect.bottom))
+            dist = math.hypot(self.x - cx, self.y - cy)
+            if dist < ROBOT_VISUAL_DIAMETER / 2:
+                logger.warning(f"Collision w/ wall: {wall.rect}")
                 collision = True
                 break
+
         if collision:
             self.x, self.y = original_x, original_y
         return collision
@@ -1509,23 +1474,24 @@ class CarRobot:
         self.moving = True
         self.state_reason = f"Moving towards {destination_name.replace('_', ' ')}"
         self.update_sensors()
-        path_key = (self.current_location_name, destination_name)
+        path_key = (self.current_location_name.lower(), destination_name.lower())
         if path_key in self.waypoint_paths:
-            self.path = [
-                self.waypoint_dict[wp_name] for wp_name in self.waypoint_paths[path_key]
-            ]
+            path_names = self.waypoint_paths[path_key]
+            logger.info(f"Path for {path_key}: {path_names}")
+            self.path = [self.waypoint_dict[wp] for wp in path_names]
+            logger.info(f"Resolved path coords: {self.path}")
             if self.path:
                 self.current_target = self.path.pop(0)
-                logger.info(f"Path found for {path_key}: {self.path}")
+                logger.info(f"First target: {self.current_target}")
         else:
             self.current_target = target_point
             self.path = []
-            logger.info(f"No predefined path for {path_key}. Directly setting target.")
+            logger.warning(f"No predefined path for {path_key}. Direct target set.")
         logger.info(f"Set target for {destination_name}: {self.current_target}")
 
     def update(self):
         current_time = pygame.time.get_ticks()
-        elapsed_time = (current_time - self.last_update_time) / 1000.0  # seconds
+        elapsed_time = (current_time - self.last_update_time) / 1000.0
         self.last_update_time = current_time
 
         if self.moving and self.current_target:
@@ -1537,33 +1503,35 @@ class CarRobot:
                     response_queue.put("Excuse me, could you please let me pass?")
                     self.obstacle_response_sent = True
                 return
+
             sensor_data = self.check_sensors()
-            obstacles = [detected for angle, detected in sensor_data if detected]
-            target_distance = math.hypot(
+            obstacles = [d for (a, d) in sensor_data if d]
+            dist_to_target = math.hypot(
                 self.current_target[0] - self.x, self.current_target[1] - self.y
             )
-            # If we're already very close to the target, ignore sensors
-            if target_distance < self.threshold * 2:
+            if dist_to_target < self.threshold * 2:
                 obstacles = []
+
             if obstacles:
                 self.moving = False
                 self.state_reason = "Waiting for obstacle to clear"
                 if self.started_moving and not self.obstacle_response_sent:
                     response_queue.put(
-                        "Hi! I’m the campus GuideBot. Could you help clear the way?"
+                        "Hi! I'm the campus GuideBot. Could you help clear the way?"
                     )
                     self.obstacle_response_sent = True
             else:
                 self.obstacle_response_sent = False
-                target_angle = self.get_target_angle()
-                angle_diff = (target_angle - self.angle + 360) % 360
-                if angle_diff > 180:
-                    angle_diff -= 360
-                if abs(angle_diff) > CAR_ROTATION_SPEED * elapsed_time:
-                    self.rotate_towards_target(target_angle, elapsed_time)
+                t_angle = self.get_target_angle()
+                a_diff = (t_angle - self.angle + 360) % 360
+                if a_diff > 180:
+                    a_diff -= 360
+                rotate_speed = CAR_ROTATION_SPEED * elapsed_time
+                if abs(a_diff) > rotate_speed:
+                    self.rotate_towards_target(t_angle, elapsed_time)
                     self.state_reason = "Rotating towards target"
                 else:
-                    self.angle = target_angle  # Snap to target angle
+                    self.angle = t_angle
                     self.move_forward(elapsed_time)
                     self.state_reason = "Moving forward"
                     self.check_point_reached()
@@ -1578,118 +1546,77 @@ class CarRobot:
                 self.obstacle_response_sent = False
 
     def draw_status(self, surface):
-        font = pygame.font.SysFont(None, 28)  # Adjusted font size for visibility
-
+        font = pygame.font.SysFont(None, 28)
         status = "MOVING" if self.moving else "STOPPED"
         status_text = font.render(f"Robot Status: {status}", True, BLUE)
-
         reason_text = font.render(f"Reason: {self.state_reason}", True, BLUE)
-
         zoom_text = font.render(f"Zoom: {self.camera.zoom:.1f}x", True, RED_COLOR)
 
-        # Define positions within BUTTON_AREA
-        x, y = 20, HEIGHT + 20  # Start at (20, 470)
-        margin = 30  # Increased margin for better spacing
-
-        # Blit status texts horizontally
+        x, y = 20, HEIGHT + 20
         surface.blit(status_text, (x, y))
         surface.blit(reason_text, (x + status_text.get_width() + 40, y))
         surface.blit(
             zoom_text,
-            (
-                x + status_text.get_width() + 40 + reason_text.get_width() + 40,
-                y,
-            ),
+            (x + status_text.get_width() + 40 + reason_text.get_width() + 40, y),
         )
-
-        # Draw zoom level bar below the texts
         self.draw_zoom_bar(surface)
 
     def draw_zoom_bar(self, surface):
-        # Define zoom bar dimensions
         bar_width, bar_height = 200, 20
-        x, y = 20, HEIGHT + 70  # Position within BUTTON_AREA=150
-
-        # Draw border
+        x, y = 20, HEIGHT + 70
         pygame.draw.rect(surface, BLACK, (x, y, bar_width, bar_height), 2)
-
-        # Calculate filled width based on zoom level
-        # Assuming zoom levels between 0.5x and 5.0x
         min_zoom, max_zoom = 0.5, 5.0
-        zoom_normalized = (self.camera.zoom - min_zoom) / (max_zoom - min_zoom)
-        zoom_normalized = max(0.0, min(1.0, zoom_normalized))  # Clamp between 0 and 1
-        filled_width = int(bar_width * zoom_normalized)
-
-        # Draw filled part
+        z_norm = (self.camera.zoom - min_zoom) / (max_zoom - min_zoom)
+        z_norm = max(0.0, min(1.0, z_norm))
+        filled_w = int(bar_width * z_norm)
         pygame.draw.rect(
-            surface, RED_COLOR, (x + 1, y + 1, filled_width - 2, bar_height - 2)
+            surface, RED_COLOR, (x + 1, y + 1, filled_w - 2, bar_height - 2)
         )
 
-        # Draw zoom text above the bar
         font = pygame.font.SysFont(None, 24)
         zoom_text = font.render(f"Zoom: {self.camera.zoom:.1f}x", True, BLACK)
         surface.blit(zoom_text, (x, y - 30))
 
     def draw(self, surface, camera):
-        # Draw the robot as a circle for simplicity
-        robot_screen_pos = camera.apply((self.x, self.y))
+        robot_pos = camera.apply((self.x, self.y))
         pygame.draw.circle(
             surface,
             GREEN if self.moving else RED_COLOR,
-            robot_screen_pos,
+            robot_pos,
             ROBOT_VISUAL_DIAMETER // 2,
         )
-        # Orientation line
         end_x = self.x + (ROBOT_VISUAL_DIAMETER / 2) * math.cos(
             math.radians(self.angle)
         )
         end_y = self.y - (ROBOT_VISUAL_DIAMETER / 2) * math.sin(
             math.radians(self.angle)
         )
-        end_screen_pos = camera.apply((end_x, end_y))
-        pygame.draw.line(surface, BLACK, robot_screen_pos, end_screen_pos, 2)
+        end_scr = camera.apply((end_x, end_y))
+        pygame.draw.line(surface, BLACK, robot_pos, end_scr, 2)
 
-        # Draw sensors
         sensor_data = self.check_sensors()
-        for (sensor_angle, (sensor_end_x, sensor_end_y)), (
-            angle_check,
-            obstacle_detected,
-        ) in zip(self.sensors, sensor_data):
-            if self.arduino_obstacle_detected:
-                color = RED_COLOR
-            else:
-                color = RED_COLOR if obstacle_detected else GREEN
-            sensor_end_screen = camera.apply((sensor_end_x, sensor_end_y))
-            pygame.draw.line(surface, color, robot_screen_pos, sensor_end_screen, 2)
-            pygame.draw.circle(surface, color, sensor_end_screen, 3)
+        for (angle, (sx, sy)), (_, blocked) in zip(self.sensors, sensor_data):
+            c = RED_COLOR if (blocked or self.arduino_obstacle_detected) else GREEN
+            s_end = camera.apply((sx, sy))
+            pygame.draw.line(surface, c, robot_pos, s_end, 2)
+            pygame.draw.circle(surface, c, s_end, 3)
 
-        # Draw waypoints with labels underneath
-        font = pygame.font.SysFont(
-            None, 24
-        )  # Initialize font once outside the loop for efficiency
+        font = pygame.font.SysFont(None, 24)
         for idx, (wp_x, wp_y) in enumerate(self.waypoints):
             color = (
                 GREEN
                 if self.waypoint_names[idx] == self.current_location_name
                 else BLUE
             )
-            wp_screen_pos = camera.apply((wp_x, wp_y))
-            pygame.draw.circle(surface, color, wp_screen_pos, 8)
+            wp_scr = camera.apply((wp_x, wp_y))
+            pygame.draw.circle(surface, color, wp_scr, 8)
+            wname = self.waypoint_names[idx]
+            img = font.render(wname, True, BLACK)
+            trect = img.get_rect()
+            trect.center = (wp_scr[0], wp_scr[1] + 15)
+            surface.blit(img, trect)
 
-            # Render the waypoint name
-            waypoint_name = self.waypoint_names[idx]
-            img = font.render(waypoint_name, True, BLACK)
-            text_rect = img.get_rect()
-
-            # Position the text centered below the waypoint
-            text_rect.center = (
-                wp_screen_pos[0],
-                wp_screen_pos[1] + 15,
-            )  # 15 pixels below
-            surface.blit(img, text_rect)
-
-        # Optional: Draw trail
-        self.previous_positions.append(robot_screen_pos)
+        self.previous_positions.append(robot_pos)
         if len(self.previous_positions) > 20:
             self.previous_positions.pop(0)
         if len(self.previous_positions) > 1:
@@ -1704,28 +1631,23 @@ class CarRobot:
                 command = command_queue.get_nowait()
                 logger.info(f"Processing command from Flask: {command}")
                 if command.startswith("go_to_"):
-                    location = command[len("go_to_") :]
-                    location_normalized = (
-                        location.replace("-", "_").replace(" ", "_").title()
-                    )
+                    loc = command[len("go_to_") :]
+                    loc_norm = loc.replace("-", "_").replace(" ", "_").title()
                     if (
-                        location_normalized.lower() in VALID_DOCTORS
-                        or location_normalized in self.waypoint_names
+                        loc_norm.lower() in VALID_DOCTORS
+                        or loc_norm in self.waypoint_names
                     ):
-                        target_point = self.waypoint_dict.get(
-                            location_normalized.lower(),
-                            self.waypoint_dict.get(location_normalized),
+                        tpoint = self.waypoint_dict.get(
+                            loc_norm.lower(), self.waypoint_dict.get(loc_norm)
                         )
-                        if target_point:
-                            self.car.set_target(target_point, location_normalized)
-                            logger.info(
-                                f"Setting target to {location_normalized}: {target_point}"
-                            )
+                        if tpoint:
+                            self.car.set_target(tpoint, loc_norm)
+                            logger.info(f"Set target -> {loc_norm}: {tpoint}")
                             self.send_command("START_SERVO")
                         else:
-                            logger.warning(f"Unknown location: {location_normalized}")
+                            logger.warning(f"Unknown location: {loc_norm}")
                 elif command == "user_choice_done":
-                    logger.info("Received 'user_choice_done' command.")
+                    logger.info("Got 'user_choice_done' command.")
                     self.car.return_to_start()
                     response_queue.put("Goodbye, going to start point.")
                 elif command == "user_choice_another":
@@ -1737,10 +1659,10 @@ class CarRobot:
     def process_responses(self):
         try:
             while True:
-                response = response_queue.get_nowait()
-                logger.info(f"Processing response: {response}")
+                resp = response_queue.get_nowait()
+                logger.info(f"Processing response: {resp}")
                 threading.Thread(
-                    target=self.perform_tts, args=(response,), daemon=True
+                    target=self.perform_tts, args=(resp,), daemon=True
                 ).start()
         except queue.Empty:
             pass
@@ -1750,11 +1672,11 @@ class CarRobot:
             temp_file = f"response_{uuid.uuid4()}.mp3"
             tts = gTTS(text=text, lang="en")
             tts.save(temp_file)
-            logger.info(f"TTS audio saved as {temp_file}")
-            sound = AudioSegment.from_mp3(temp_file)
-            play(sound)
+            logger.info(f"TTS audio saved: {temp_file}")
+            snd = AudioSegment.from_mp3(temp_file)
+            play(snd)
             os.remove(temp_file)
-            logger.info(f"TTS audio file {temp_file} removed after playback.")
+            logger.info(f"Removed TTS audio file: {temp_file}")
         except Exception as e:
             logger.error(f"Error in perform_tts: {e}")
 
@@ -1768,70 +1690,57 @@ class CarRobot:
     def run(self):
         flask_thread = threading.Thread(target=self.run_flask_app, daemon=True)
         flask_thread.start()
+
         running = True
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    mouse_x, mouse_y = pygame.mouse.get_pos()
-                    if mouse_y < HEIGHT:
-                        self.choose_waypoint(mouse_x, mouse_y)
+                    mx, my = pygame.mouse.get_pos()
+                    if my < HEIGHT:
+                        self.choose_waypoint(mx, my)
                 elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
-                        # Zoom in with upper limit
+                    if event.key in (pygame.K_EQUALS, pygame.K_PLUS):
                         if self.camera.zoom < 5.0:
-                            self.camera.zoom += 0.5  # Increment zoom
-                            logger.info(f"Zoom increased to {self.camera.zoom}")
+                            self.camera.zoom += 0.5
+                            logger.info(f"Zoom -> {self.camera.zoom}")
                             self.update_zoom_related_elements()
-                    elif (
-                        event.key == pygame.K_MINUS or event.key == pygame.K_UNDERSCORE
-                    ):
-                        # Zoom out with lower limit
+                    elif event.key in (pygame.K_MINUS, pygame.K_UNDERSCORE):
                         if self.camera.zoom > 0.5:
-                            self.camera.zoom = max(
-                                0.5, self.camera.zoom - 0.5
-                            )  # Decrement zoom with a minimum limit
-                            logger.info(f"Zoom decreased to {self.camera.zoom}")
+                            self.camera.zoom = max(0.5, self.camera.zoom - 0.5)
+                            logger.info(f"Zoom -> {self.camera.zoom}")
                             self.update_zoom_related_elements()
 
             self.process_commands()
             self.process_responses()
 
-            # Update camera to follow the robot
             self.camera.update((self.car.x, self.car.y))
-
             self.car.update()
-            current_moving_state = self.car.moving
-            if current_moving_state != self.previous_moving_state:
-                if current_moving_state:
+
+            current_moving = self.car.moving
+            if current_moving != self.previous_moving_state:
+                if current_moving:
                     self.send_command("START_SERVO")
-                    logger.info(
-                        "Command 'START_SERVO' sent due to state transition to MOVING."
-                    )
+                    logger.info("Send 'START_SERVO' (movement started).")
                 else:
                     self.send_command("STOP_SERVO")
-                    logger.info(
-                        "Command 'STOP_SERVO' sent due to state transition to STOPPED."
-                    )
-            self.previous_moving_state = current_moving_state
+                    logger.info("Send 'STOP_SERVO' (movement stopped).")
+            self.previous_moving_state = current_moving
 
-            # Clear the main simulation area (top 600x450) with white background
-            simulation_rect = pygame.Rect(0, 0, WIDTH, HEIGHT)
-            self.screen.fill(WHITE, simulation_rect)
+            # Clear main simulation area
+            sim_rect = pygame.Rect(0, 0, WIDTH, HEIGHT)
+            self.screen.fill(WHITE, sim_rect)
 
-            # Draw corridor walls and polygons
             self.draw_walls(self.camera)
-            # Draw the robot
             self.car.draw(self.screen, self.camera)
-            # Draw status text and zoom indicators in the bottom area
             self.car.draw_status(self.screen)
 
-            # Draw the bottom status area with a white background
+            # Draw bottom area
             bottom_rect = pygame.Rect(0, HEIGHT, WIDTH, BUTTON_AREA_HEIGHT)
             pygame.draw.rect(self.screen, WHITE, bottom_rect)
 
-            # Ensure status texts are drawn on top of the white background
+            # Ensure status text is on top
             self.car.draw_status(self.screen)
 
             pygame.display.flip()
@@ -1842,17 +1751,14 @@ class CarRobot:
         pygame.quit()
         sys.exit()
 
-    def draw_grid(self):
-        grid_color = DARK_GRAY
-        grid_spacing = 50  # pixels
+    def draw_walls(self, camera):
+        for wall in self.walls:
+            wall.draw(self.screen, camera, color=BLACK)
 
-        for x in range(0, WIDTH, grid_spacing):
-            pygame.draw.line(self.screen, grid_color, (x, 0), (x, HEIGHT), 1)
-        for y in range(0, HEIGHT, grid_spacing):
-            pygame.draw.line(self.screen, grid_color, (0, y), (WIDTH, y), 1)
+        # If you have any polygon drawing, keep it here
+        # e.g. self.outer_polygon, self.inner_polygon
 
     def update_zoom_related_elements(self):
-        """Update elements that depend on zoom level, such as sensors."""
         self.car.update_sensors()
 
 
@@ -1878,30 +1784,30 @@ class SerialReader(threading.Thread):
         try:
             self.ser = serial.Serial(self.serial_port, self.baud_rate, timeout=1)
             logger.info(
-                f"Connected to Arduino on {self.serial_port} at {self.baud_rate} baud."
+                f"Connected to Arduino on {self.serial_port} at {self.baud_rate}"
             )
             while self.running:
                 if self.ser.in_waiting > 0:
                     line = self.ser.readline().decode("utf-8").strip()
                     if line.startswith("<STATE>") and line.endswith("</STATE>"):
-                        state = (
+                        st = (
                             line.replace("<STATE>", "")
                             .replace("</STATE>", "")
                             .strip()
                             .upper()
                         )
                         with self.lock:
-                            if state == "STOPPED":
+                            if st == "STOPPED":
                                 if self.state != "STOPPED":
-                                    logger.info("Arduino: STOPPED")
+                                    logger.info("Arduino -> STOPPED")
                                 self.state = "STOPPED"
                                 self.car.moving = False
                                 self.car.state_reason = "Obstacle detected by Arduino"
                                 self.car.arduino_obstacle_detected = True
                                 self.game.send_command("STOP_SERVO")
-                            elif state == "MOVING":
+                            elif st == "MOVING":
                                 if self.state != "MOVING":
-                                    logger.info("Arduino: MOVING")
+                                    logger.info("Arduino -> MOVING")
                                 self.state = "MOVING"
                                 self.car.arduino_obstacle_detected = False
                                 if self.car.current_target:
@@ -2084,20 +1990,20 @@ class Game:
         # Define waypoints in real-world coordinates (meters)
         # Ensure they are between inner and outer boundaries
         waypoints_real = [
-            (2.5, 21.75),  # Start
-            (9.5, 21.75),  # M415
-            (16.5, 21.75),  # M416
-            (23.5, 21.75),  # Admission
-            (30.5, 21.75),  # Dr. Nada
-            (37.5, 21.75),  # Dr. Omar
-            (41.05, 21.75),  # go right
-            (41.05, 15.75),  # Dr. Slim
+            (2.5, 21.75),  # start
+            (9.5, 21.75),  # m415
+            (16.5, 21.75),  # m416
+            (23.5, 21.75),  # admission
+            (30.5, 21.75),  # dr_nada
+            (37.5, 21.75),  # dr_omar
+            (41.05, 21.75),  # right_corner
+            (41.05, 15.75),  # dr_slim
         ]
         self.waypoint_names = [
-            "Start",
-            "M415",
-            "M416",
-            "Admission",
+            "start",
+            "m415",
+            "m416",
+            "admission",
             "dr_nada",
             "dr_omar",
             "right_corner",
