@@ -1270,6 +1270,7 @@ class CarRobot:
         self.waypoint_paths = {
             ("Start", "M215"): ["M215"],
             ("M215", "M216"): ["M216"],
+            ("M215", "Start"): ["Start"],
             ("M216", "Admission"): ["Admission"],
             ("Admission", "dr_nada"): ["dr_nada"],
             ("dr_nada", "dr_omar"): ["dr_omar"],
@@ -1287,9 +1288,29 @@ class CarRobot:
             ("dr_nada", "M216"): ["Admission", "M216"],
             ("Start", "dr_omar"): ["M215", "M216", "Admission", "dr_nada", "dr_omar"],
             ("dr_omar", "Start"): ["dr_nada", "Admission", "M216", "M215", "Start"],
-            # Added the missing path for M215 to Start
-            ("M215", "Start"): ["Start"],
-            # Add more paths if necessary
+            # Dr Slim's path
+            ("dr_nada", "dr_slim"): ["dr_slim"],
+            ("dr_slim", "dr_omar"): ["go_right", "dr_omar"],
+            ("dr_omar", "dr_slim"): ["go_right", "dr_slim"],
+            ("dr_slim", "dr_nada"): ["go_right", "dr_omar", "dr_nada"],
+            ("Start", "dr_slim"): [
+                "M215",
+                "M216",
+                "Admission",
+                "dr_nada",
+                "dr_omar",
+                "go_right",
+                "dr_slim",
+            ],
+            ("dr_slim", "Start"): [
+                "go_right",
+                "dr_omar",
+                "dr_nada",
+                "Admission",
+                "M216",
+                "M215",
+                "Start",
+            ],
         }
 
     def create_sensors(self):
@@ -2069,6 +2090,8 @@ class Game:
             (23.5, 21.75),  # Admission
             (30.5, 21.75),  # Dr. Nada
             (37.5, 21.75),  # Dr. Omar
+            (41.5, 21.75),  # go right
+            (41.5, 15.75),  # Dr. Slim
         ]
         self.waypoint_names = [
             "Start",
@@ -2077,6 +2100,8 @@ class Game:
             "Admission",
             "dr_nada",
             "dr_omar",
+            "go_right",
+            "dr_slim",
         ]
 
         # Scaling functions
