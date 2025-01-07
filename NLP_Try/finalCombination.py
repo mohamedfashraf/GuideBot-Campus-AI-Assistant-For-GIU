@@ -139,7 +139,7 @@ all_rooms = set()
 for b_data in VALID_BUILDINGS.values():
     all_rooms.update(b_data["rooms"])
 
-VALID_DOCTORS = ["dr_slim", "dr_nada", "dr_omar"]
+VALID_DOCTORS = ["dr_slim", "doctor_slim", "doc_slim", "dr_nada", "dr_omar"]
 DAYS_OF_WEEK = [
     "Monday",
     "Tuesday",
@@ -1290,9 +1290,9 @@ class CarRobot:
             ("dr_omar", "Start"): ["dr_nada", "Admission", "M416", "M415", "Start"],
             # Dr Slim's path
             ("dr_nada", "dr_slim"): ["dr_slim"],
+            ("dr_slim", "dr_nada"): ["right_corner", "dr_omar", "dr_nada"],
             ("dr_slim", "dr_omar"): ["right_corner", "dr_omar"],
             ("dr_omar", "dr_slim"): ["right_corner", "dr_slim"],
-            ("dr_slim", "dr_nada"): ["right_corner", "dr_omar", "dr_nada"],
             ("Start", "dr_slim"): [
                 "M415",
                 "M416",
@@ -1312,7 +1312,6 @@ class CarRobot:
                 "Start",
             ],
         }
-
 
     def create_sensors(self):
         self.sensors = []
@@ -2087,7 +2086,7 @@ class Game:
         waypoints_real = [
             (2.5, 21.75),  # Start
             (9.5, 21.75),  # M415
-            (16.5, 21.75), # M416
+            (16.5, 21.75),  # M416
             (23.5, 21.75),  # Admission
             (30.5, 21.75),  # Dr. Nada
             (37.5, 21.75),  # Dr. Omar
