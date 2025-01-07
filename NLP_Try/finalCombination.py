@@ -1278,6 +1278,7 @@ class CarRobot:
         # Define waypoint paths
         # --- ADDED FOR DEBUG: path logs
         self.waypoint_paths = {
+            # Existing Paths
             ("start", "m415"): ["m415"],
             ("m415", "m416"): ["m416"],
             ("m415", "start"): ["start"],
@@ -1320,6 +1321,117 @@ class CarRobot:
                 "m415",
                 "start",
             ],
+            # Missing Paths Added
+            # 1. start ↔ right_corner
+            ("start", "right_corner"): [
+                "m415",
+                "m416",
+                "admission",
+                "dr_nada",
+                "dr_omar",
+                "right_corner",
+            ],
+            ("right_corner", "start"): [
+                "dr_omar",
+                "dr_nada",
+                "admission",
+                "m416",
+                "m415",
+                "start",
+            ],
+            # 2. m415 ↔ dr_nada
+            ("m415", "dr_nada"): ["m416", "admission", "dr_nada"],
+            ("dr_nada", "m415"): ["admission", "m416", "m415"],
+            # 3. m415 ↔ dr_omar
+            ("m415", "dr_omar"): ["m416", "admission", "dr_nada", "dr_omar"],
+            ("dr_omar", "m415"): ["dr_nada", "admission", "m416", "m415"],
+            # 4. m415 ↔ right_corner
+            ("m415", "right_corner"): [
+                "m416",
+                "admission",
+                "dr_nada",
+                "dr_omar",
+                "right_corner",
+            ],
+            ("right_corner", "m415"): [
+                "dr_omar",
+                "dr_nada",
+                "admission",
+                "m416",
+                "m415",
+            ],
+            # 5. m415 ↔ dr_slim
+            ("m415", "dr_slim"): [
+                "m416",
+                "admission",
+                "dr_nada",
+                "dr_omar",
+                "right_corner",
+                "dr_slim",
+            ],
+            ("dr_slim", "m415"): [
+                "right_corner",
+                "dr_omar",
+                "dr_nada",
+                "admission",
+                "m416",
+                "m415",
+            ],
+            # 6. m416 ↔ dr_omar
+            ("m416", "dr_omar"): ["admission", "dr_nada", "dr_omar"],
+            ("dr_omar", "m416"): ["dr_nada", "admission", "m416"],
+            # 7. m416 ↔ right_corner
+            ("m416", "right_corner"): [
+                "admission",
+                "dr_nada",
+                "dr_omar",
+                "right_corner",
+            ],
+            ("right_corner", "m416"): ["dr_omar", "dr_nada", "admission", "m416"],
+            # 8. m416 ↔ dr_slim
+            ("m416", "dr_slim"): [
+                "admission",
+                "dr_nada",
+                "dr_omar",
+                "right_corner",
+                "dr_slim",
+            ],
+            ("dr_slim", "m416"): [
+                "right_corner",
+                "dr_omar",
+                "dr_nada",
+                "admission",
+                "m416",
+            ],
+            # 9. admission ↔ dr_omar
+            ("admission", "dr_omar"): ["dr_nada", "dr_omar"],
+            ("dr_omar", "admission"): ["dr_nada", "admission"],
+            # 10. admission ↔ right_corner
+            ("admission", "right_corner"): ["dr_nada", "dr_omar", "right_corner"],
+            ("right_corner", "admission"): ["dr_omar", "dr_nada", "admission"],
+            # 11. admission ↔ dr_slim
+            ("admission", "dr_slim"): ["dr_nada", "dr_omar", "right_corner", "dr_slim"],
+            ("dr_slim", "admission"): [
+                "right_corner",
+                "dr_omar",
+                "dr_nada",
+                "admission",
+            ],
+            # 12. dr_nada ↔ dr_omar
+            ("dr_nada", "dr_omar"): ["dr_omar"],
+            ("dr_omar", "dr_nada"): ["dr_nada"],
+            # 13. dr_nada ↔ right_corner
+            ("dr_nada", "right_corner"): ["dr_omar", "right_corner"],
+            ("right_corner", "dr_nada"): ["dr_omar", "dr_nada"],
+            # 14. dr_omar ↔ right_corner
+            ("dr_omar", "right_corner"): ["right_corner"],
+            ("right_corner", "dr_omar"): ["dr_omar"],
+            # 15. dr_slim ↔ dr_omar
+            ("dr_slim", "dr_omar"): ["right_corner", "dr_omar"],
+            ("dr_omar", "dr_slim"): ["right_corner", "dr_slim"],
+            # 16. dr_slim ↔ dr_nada
+            ("dr_slim", "dr_nada"): ["right_corner", "dr_omar", "dr_nada"],
+            ("dr_nada", "dr_slim"): ["dr_slim"],
         }
 
     def create_sensors(self):
