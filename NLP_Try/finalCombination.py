@@ -131,7 +131,7 @@ VALID_BUILDINGS = {
     "A": {"name": "Building A", "rooms": {"A101", "A102", "A103"}},
     "M": {
         "name": "Building M",
-        "rooms": {"M215", "M216", "M217", "Admission", "Financial", "Student_Affairs"},
+        "rooms": {"M415", "M416", "Admission", "Financial", "Student_Affairs"},
     },
     "S": {"name": "Building S", "rooms": {"S301", "S302", "S303"}},
 }
@@ -1268,34 +1268,34 @@ class CarRobot:
 
         # Define waypoint paths for returning to start, including the fix for M215
         self.waypoint_paths = {
-            ("Start", "M215"): ["M215"],
-            ("M215", "M216"): ["M216"],
-            ("M215", "Start"): ["Start"],
-            ("M216", "Admission"): ["Admission"],
+            ("Start", "M415"): ["M415"],
+            ("M415", "M416"): ["M416"],
+            ("M415", "Start"): ["Start"],
+            ("M416", "Admission"): ["Admission"],
             ("Admission", "dr_nada"): ["dr_nada"],
             ("dr_nada", "dr_omar"): ["dr_omar"],
-            ("dr_omar", "Start"): ["dr_nada", "Admission", "M216", "M215", "Start"],
-            ("Start", "M216"): ["M215", "M216"],
-            ("Start", "Admission"): ["M215", "M216", "Admission"],
-            ("M215", "Admission"): ["M216", "Admission"],
-            ("Admission", "M215"): ["M216", "M215"],
-            ("M216", "M215"): ["M215"],
-            ("M216", "Start"): ["M215", "Start"],
-            ("Admission", "Start"): ["M216", "M215", "Start"],
-            ("Start", "dr_nada"): ["M215", "M216", "Admission", "dr_nada"],
-            ("dr_nada", "Start"): ["Admission", "M216", "M215", "Start"],
-            ("M216", "dr_nada"): ["Admission", "dr_nada"],
-            ("dr_nada", "M216"): ["Admission", "M216"],
-            ("Start", "dr_omar"): ["M215", "M216", "Admission", "dr_nada", "dr_omar"],
-            ("dr_omar", "Start"): ["dr_nada", "Admission", "M216", "M215", "Start"],
+            ("dr_omar", "Start"): ["dr_nada", "Admission", "M416", "M415", "Start"],
+            ("Start", "M416"): ["M415", "M416"],
+            ("Start", "Admission"): ["M415", "M416", "Admission"],
+            ("M415", "Admission"): ["M416", "Admission"],
+            ("Admission", "M415"): ["M416", "M415"],
+            ("M416", "M415"): ["M415"],
+            ("M416", "Start"): ["M415", "Start"],
+            ("Admission", "Start"): ["M416", "M415", "Start"],
+            ("Start", "dr_nada"): ["M415", "M416", "Admission", "dr_nada"],
+            ("dr_nada", "Start"): ["Admission", "M416", "M415", "Start"],
+            ("M416", "dr_nada"): ["Admission", "dr_nada"],
+            ("dr_nada", "M416"): ["Admission", "M416"],
+            ("Start", "dr_omar"): ["M415", "M416", "Admission", "dr_nada", "dr_omar"],
+            ("dr_omar", "Start"): ["dr_nada", "Admission", "M416", "M415", "Start"],
             # Dr Slim's path
             ("dr_nada", "dr_slim"): ["dr_slim"],
             ("dr_slim", "dr_omar"): ["go_right", "dr_omar"],
             ("dr_omar", "dr_slim"): ["go_right", "dr_slim"],
             ("dr_slim", "dr_nada"): ["go_right", "dr_omar", "dr_nada"],
             ("Start", "dr_slim"): [
-                "M215",
-                "M216",
+                "M415",
+                "M416",
                 "Admission",
                 "dr_nada",
                 "dr_omar",
@@ -1307,11 +1307,12 @@ class CarRobot:
                 "dr_omar",
                 "dr_nada",
                 "Admission",
-                "M216",
-                "M215",
+                "M416",
+                "M415",
                 "Start",
             ],
         }
+
 
     def create_sensors(self):
         self.sensors = []
@@ -2085,8 +2086,8 @@ class Game:
         # Ensure they are between inner and outer boundaries
         waypoints_real = [
             (2.5, 21.75),  # Start
-            (9.5, 21.75),  # M215
-            (16.5, 21.75),  # M216
+            (9.5, 21.75),  # M415
+            (16.5, 21.75), # M416
             (23.5, 21.75),  # Admission
             (30.5, 21.75),  # Dr. Nada
             (37.5, 21.75),  # Dr. Omar
@@ -2095,8 +2096,8 @@ class Game:
         ]
         self.waypoint_names = [
             "Start",
-            "M215",
-            "M216",
+            "M415",
+            "M416",
             "Admission",
             "dr_nada",
             "dr_omar",
