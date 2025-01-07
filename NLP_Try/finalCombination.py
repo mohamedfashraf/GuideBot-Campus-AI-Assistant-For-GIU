@@ -574,6 +574,15 @@ def handle_user_choice():
     return jsonify({"response": response})
 
 
+@app.route("/robot_status", methods=["GET"])
+def robot_status():
+    # We assume `game` is a module-level variable or a global we can access
+    is_at_start = game.car.current_location_name.lower() == "start"
+    return jsonify(
+        {"current_location": game.car.current_location_name, "is_at_start": is_at_start}
+    )
+
+
 def open_application(command, original_command_text):
     """
     Main logic for handling commands.
@@ -865,7 +874,7 @@ def open_application(command, original_command_text):
                         "Would you like me to guide you to the Admission office?"
                     )
                     with pending_action_lock:
-                        pending_action = "go_to_Admission"
+                        pending_action = "go_to_admission"
                     response_queue.put(response)
                     logger.info(f"Responding: {response}")
                 else:
@@ -999,7 +1008,7 @@ def open_application(command, original_command_text):
                     "Would you like me to guide you to the Admission office?"
                 )
                 with pending_action_lock:
-                    pending_action = "go_to_Admission"
+                    pending_action = "go_to_admission"
                 response_queue.put(response)
                 logger.info(f"Responding: {response}")
             else:
@@ -1322,6 +1331,14 @@ class CarRobot:
             sy = self.y - sensor_length * math.sin(math.radians(sensor_angle))
             self.sensors.append((sensor_angle, (sx, sy)))
 
+    def return_to_start(self):
+        # Just a helper method: set your target to the "start" waypoint.
+        start_position = self.waypoint_dict["start"]  # (x, y) for the "start" waypoint
+        self.set_target(start_position, "start")
+        self.is_returning_to_start = True
+        # Optionally update state_reason if you wish:
+        self.state_reason = "Returning to start"
+
     def get_target_angle(self):
         """
         Returns the angle (in degrees) from the robot's current position (self.x, self.y)
@@ -1494,55 +1511,93 @@ class CarRobot:
         elapsed_time = (current_time - self.last_update_time) / 1000.0
         self.last_update_time = current_time
 
+        # Log the initial state at the start of update
+        logger.debug(
+            f"[update] Start:"
+            f" moving={self.moving},"
+            f" current_target={self.current_target},"
+            f" current_location={self.current_location_name},"
+            f" arduino_obstacle={self.arduino_obstacle_detected},"
+            f" reason={self.state_reason}"
+        )
+
         if self.moving and self.current_target:
             self.started_moving = True
+
+            # Check if Arduino forced us to stop due to external obstacle
             if self.arduino_obstacle_detected:
                 self.moving = False
                 self.state_reason = "Obstacle detected by Arduino"
+                logger.debug("[update] Arduino signaled obstacle; stopping movement.")
                 if self.started_moving and not self.obstacle_response_sent:
                     response_queue.put("Excuse me, could you please let me pass?")
                     self.obstacle_response_sent = True
                 return
 
+            # Check local sensors for obstacles
             sensor_data = self.check_sensors()
             obstacles = [d for (a, d) in sensor_data if d]
             dist_to_target = math.hypot(
                 self.current_target[0] - self.x, self.current_target[1] - self.y
             )
+
+            # If we're close enough to the waypoint, ignore sensor obstacles
             if dist_to_target < self.threshold * 2:
                 obstacles = []
 
             if obstacles:
+                # Something is in front of us, so we pause
                 self.moving = False
                 self.state_reason = "Waiting for obstacle to clear"
+                logger.debug("[update] Sensors show obstacle(s); stopping movement.")
                 if self.started_moving and not self.obstacle_response_sent:
                     response_queue.put(
                         "Hi! I'm the campus GuideBot. Could you help clear the way?"
                     )
                     self.obstacle_response_sent = True
+
             else:
+                # Clear to move
                 self.obstacle_response_sent = False
                 t_angle = self.get_target_angle()
                 a_diff = (t_angle - self.angle + 360) % 360
+
+                # Shortest angle difference
                 if a_diff > 180:
                     a_diff -= 360
+
                 rotate_speed = CAR_ROTATION_SPEED * elapsed_time
+                logger.debug(
+                    f"[update] No obstacle. TargetAngle={t_angle:.1f}, "
+                    f"CurrentAngle={self.angle:.1f}, a_diff={a_diff:.1f}"
+                )
+
+                # Check if we need to rotate first
                 if abs(a_diff) > rotate_speed:
                     self.rotate_towards_target(t_angle, elapsed_time)
                     self.state_reason = "Rotating towards target"
+                    logger.debug("[update] Rotating toward target.")
                 else:
+                    # Align exactly, then move forward
                     self.angle = t_angle
                     self.move_forward(elapsed_time)
                     self.state_reason = "Moving forward"
+                    logger.debug(
+                        f"[update] Moved forward. New pos=({self.x:.2f},{self.y:.2f})"
+                    )
                     self.check_point_reached()
+
         else:
+            # Not moving: could be because we have no target or Arduino says STOP
             if self.arduino_obstacle_detected:
                 self.state_reason = "Obstacle detected by Arduino"
+                logger.debug("[update] Not moving; Arduino-obstacle condition remains.")
                 if self.started_moving and not self.obstacle_response_sent:
                     response_queue.put("Excuse me, could you please let me pass?")
                     self.obstacle_response_sent = True
             else:
                 self.state_reason = "Stopped"
+                logger.debug("[update] Robot is currently stopped.")
                 self.obstacle_response_sent = False
 
     def draw_status(self, surface):
@@ -1632,7 +1687,7 @@ class CarRobot:
                 logger.info(f"Processing command from Flask: {command}")
                 if command.startswith("go_to_"):
                     loc = command[len("go_to_") :]
-                    loc_norm = loc.replace("-", "_").replace(" ", "_").title()
+                    loc_norm = loc.replace("-", "_").replace(" ", "_").lower()
                     if (
                         loc_norm.lower() in VALID_DOCTORS
                         or loc_norm in self.waypoint_names
@@ -2072,7 +2127,7 @@ class Game:
                 if command.startswith("go_to_"):
                     location = command[len("go_to_") :]
                     location_normalized = (
-                        location.replace("-", "_").replace(" ", "_").title()
+                        location.replace("-", "_").replace(" ", "_").lower()
                     )
                     if (
                         location_normalized.lower() in VALID_DOCTORS

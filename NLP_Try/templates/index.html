@@ -368,7 +368,7 @@
       .suggestion-text {
         font-size: 0.875rem; /* text-sm */
         color: #374151; /* Tailwind's gray-700 */
-        /* Fixed dark mode class */
+        /* For dark mode, a real implementation would toggle classes, but let's keep it simple: */
         color: #d1d5db; /* Tailwind's gray-300 for dark mode */
         flex-grow: 1;
         text-align: center;
@@ -671,15 +671,6 @@
             ></i>
             <!-- Tooltip -->
             <span id="micBtnTooltip" class="tooltip">Start Voice Command</span>
-            <!-- Spinner Overlay (Removed) -->
-            <!--
-            <div id="micSpinner" class="absolute inset-0 flex items-center justify-center hidden">
-              <svg class="h-4 w-4 text-indigo-500 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-              </svg>
-            </div>
-            -->
           </button>
 
           <!-- Input Field -->
@@ -731,15 +722,6 @@
             ></i>
             <!-- Tooltip -->
             <span id="submitBtnTooltip" class="tooltip">Submit Command</span>
-            <!-- Spinner Overlay (Removed) -->
-            <!--
-            <div id="submitSpinner" class="absolute inset-0 flex items-center justify-center hidden">
-              <svg class="h-4 w-4 text-indigo-500 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-              </svg>
-            </div>
-            -->
           </button>
         </div>
       </div>
@@ -798,8 +780,8 @@
           <div class="guide-item" data-index="2">
             <i class="fas fa-route"></i>
             <p>
-              Use voice or text commands to navigate or ask about something the
-              robot to different locations.
+              Use voice or text commands to navigate or ask the robot about
+              different campus locations.
             </p>
           </div>
           <!-- Add more guide items as needed -->
@@ -823,6 +805,17 @@
         class="lottie-animation"
       />
     </noscript>
+
+    <!-- Floating "Return to Start" Button -->
+    <div class="fixed bottom-4 right-4 z-50">
+      <button
+        id="returnToStartBtn"
+        class="px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 focus:outline-none shadow-lg text-sm sm:text-base md:text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled
+      >
+        Return to Start
+      </button>
+    </div>
 
     <script>
       // Initialize Lottie Animation
@@ -865,6 +858,64 @@
           themeToggleIcon.classList.add("fa-sun");
         }
       });
+
+      // Periodically check robot status (to enable/disable "Return to Start")
+      let robotStatusIntervalId = null;
+
+      async function checkRobotStatus() {
+        try {
+          const response = await fetch("http://127.0.0.1:5000/robot_status");
+          if (!response.ok) {
+            console.error("Failed to fetch robot status:", response.status);
+            return;
+          }
+          const data = await response.json();
+          const isAtStart = data.is_at_start;
+          const returnBtn = document.getElementById("returnToStartBtn");
+          if (isAtStart) {
+            returnBtn.disabled = true;
+          } else {
+            returnBtn.disabled = false;
+          }
+        } catch (err) {
+          console.error("Error checking robot status:", err);
+        }
+      }
+
+      // Set up "Return to Start" button click
+      document
+        .getElementById("returnToStartBtn")
+        .addEventListener("click", async () => {
+          const returnBtn = document.getElementById("returnToStartBtn");
+          if (returnBtn.disabled) return; // Guard check
+
+          // We send "done" or a command that triggers going to start:
+          console.log("Requesting the robot to return to start...");
+
+          // Example: we'll just POST a command "done"
+          // (Adjust if your backend expects a different text)
+          try {
+            const response = await fetch("http://127.0.0.1:5000/command", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text: "done" }),
+            });
+            if (!response.ok) {
+              console.error("Failed to send return-to-start command:", response.status);
+            } else {
+              console.log("Return-to-start command sent successfully.");
+            }
+          } catch (error) {
+            console.error("Error sending return-to-start command:", error);
+          }
+        });
+
+      // Start a status check every few seconds
+      function startRobotStatusChecker() {
+        if (robotStatusIntervalId) return; // Prevent multiple intervals
+        robotStatusIntervalId = setInterval(checkRobotStatus, 3000); // every 3s
+        checkRobotStatus(); // initial check right away
+      }
 
       // Fetch Doctor Availability from Backend with doctorId
       async function fetchDoctorAvailability(doctorId) {
@@ -926,14 +977,6 @@
           const scheduleContent = document.createElement("div");
           scheduleContent.className =
             "w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 fade-in-up custom-select";
-          // Changed p-4 to p-2
-
-          // *** Removed the "Select a Day:" header ***
-          // const scheduleHeader = document.createElement("h2");
-          // scheduleHeader.className =
-          //   "text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4";
-          // scheduleHeader.textContent = "Select a Day:";
-          // scheduleContent.appendChild(scheduleHeader);
 
           // Generate list of available days
           const days = Object.keys(availability);
@@ -991,7 +1034,6 @@
         const scheduleContent = document.createElement("div");
         scheduleContent.className =
           "w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 fade-in-up";
-        // Changed p-4 to p-2
 
         // **Sanitize the day string to remove any non-alphabetic characters**
         const sanitizedDay = day.replace(/[^a-zA-Z]/g, "");
@@ -1000,7 +1042,6 @@
         const scheduleHeader = document.createElement("h2");
         scheduleHeader.className =
           "text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4";
-        // **Use the sanitized day string in the header**
         scheduleHeader.textContent = `Available Times on ${
           sanitizedDay.charAt(0).toUpperCase() + sanitizedDay.slice(1)
         }:`;
@@ -1055,7 +1096,7 @@
           const backButton = document.createElement("button");
           backButton.className = "back-button";
           backButton.innerHTML = '<i class="fas fa-arrow-right"></i>'; // Only arrow icon
-          backButton.setAttribute("aria-label", "Go Back"); // Added ARIA label for accessibility
+          backButton.setAttribute("aria-label", "Go Back");
           backButton.addEventListener("click", () => {
             displayDatePicker(doctorId);
           });
