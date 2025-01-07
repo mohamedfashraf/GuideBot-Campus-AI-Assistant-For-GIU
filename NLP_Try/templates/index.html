@@ -807,6 +807,7 @@
     </noscript>
 
     <!-- Floating "Return to Start" Button -->
+    {% comment %}
     <div class="fixed bottom-4 right-4 z-50">
       <button
         id="returnToStartBtn"
@@ -816,6 +817,7 @@
         Return to Start
       </button>
     </div>
+    {% endcomment %}
 
     <script>
       // Initialize Lottie Animation
@@ -901,7 +903,10 @@
               body: JSON.stringify({ text: "done" }),
             });
             if (!response.ok) {
-              console.error("Failed to send return-to-start command:", response.status);
+              console.error(
+                "Failed to send return-to-start command:",
+                response.status
+              );
             } else {
               console.log("Return-to-start command sent successfully.");
             }
