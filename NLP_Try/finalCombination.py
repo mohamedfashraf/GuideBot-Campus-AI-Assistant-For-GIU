@@ -2090,8 +2090,8 @@ class Game:
             (23.5, 21.75),  # Admission
             (30.5, 21.75),  # Dr. Nada
             (37.5, 21.75),  # Dr. Omar
-            (41.5, 21.75),  # go right
-            (41.5, 15.75),  # Dr. Slim
+            (41.05, 21.75),  # go right
+            (41.05, 15.75),  # Dr. Slim
         ]
         self.waypoint_names = [
             "Start",
