@@ -1290,20 +1290,20 @@ class CarRobot:
             ("dr_omar", "Start"): ["dr_nada", "Admission", "M416", "M415", "Start"],
             # Dr Slim's path
             ("dr_nada", "dr_slim"): ["dr_slim"],
-            ("dr_slim", "dr_omar"): ["go_right", "dr_omar"],
-            ("dr_omar", "dr_slim"): ["go_right", "dr_slim"],
-            ("dr_slim", "dr_nada"): ["go_right", "dr_omar", "dr_nada"],
+            ("dr_slim", "dr_omar"): ["right_corner", "dr_omar"],
+            ("dr_omar", "dr_slim"): ["right_corner", "dr_slim"],
+            ("dr_slim", "dr_nada"): ["right_corner", "dr_omar", "dr_nada"],
             ("Start", "dr_slim"): [
                 "M415",
                 "M416",
                 "Admission",
                 "dr_nada",
                 "dr_omar",
-                "go_right",
+                "right_corner",
                 "dr_slim",
             ],
             ("dr_slim", "Start"): [
-                "go_right",
+                "right_corner",
                 "dr_omar",
                 "dr_nada",
                 "Admission",
@@ -2101,7 +2101,7 @@ class Game:
             "Admission",
             "dr_nada",
             "dr_omar",
-            "go_right",
+            "right_corner",
             "dr_slim",
         ]
 
