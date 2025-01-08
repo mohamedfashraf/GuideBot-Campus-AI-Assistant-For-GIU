@@ -255,7 +255,8 @@ weekly_schedule = {
         day: {"opens_at": "10:00", "closes_at": "18:00"} for day in DAYS_OF_WEEK
     },
     "Admission": {
-        day: {"opens_at": "08:00", "closes_at": "16:00"} for day in DAYS_OF_WEEK
+        day: {"opens_at": "00:00", "closes_at": "23:59"}
+        for day in DAYS_OF_WEEK  # normal timing "opens_at": "08:00", "closes_at": "16:00" just changed to 24 hours for testing
     },
 }
 
@@ -266,7 +267,7 @@ def create_doctor_schedule():
         "08:30 - 10:00",
         "10:15 - 11:45",
         "12:00 - 13:30",
-        "15:45 - 17:15",
+        "00:00 - 23:59",  # normal timing "15:45 - 17:15", just changed to 24 hours for testing
     ]
     for doctor in VALID_DOCTORS:
         schedule[doctor] = {day: common_times.copy() for day in DAYS_OF_WEEK}
