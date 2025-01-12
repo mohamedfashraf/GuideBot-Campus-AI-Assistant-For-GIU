@@ -98,8 +98,8 @@ SENSOR_ANGLES = [-30, 0, 30]
 WAYPOINT_THRESHOLD = 1  # pixels (increased from 2)
 FPS = 30
 
-SERIAL_PORT = "COM5"  # Update this to your Arduino's serial port
-BAUD_RATE = 115200
+SERIAL_PORT = "COM8"  # Update this to your Arduino's serial port
+BAUD_RATE = 9600
 
 # Configure logging
 logging.basicConfig(
@@ -1239,7 +1239,19 @@ class Camera:
 
 
 class CarRobot:
-    def __init__(self, x, y, waypoints, waypoint_names, walls, prompt_queue, camera):
+
+    def __init__(
+        self,
+        x,
+        y,
+        waypoints,
+        waypoint_names,
+        walls,
+        prompt_queue,
+        camera,
+        waypoints_real,  # New parameter
+        waypoint_real_dict,  # New parameter
+    ):
         self.start_x = float(x)
         self.start_y = float(y)
         self.x = float(x)
@@ -1248,8 +1260,10 @@ class CarRobot:
         self.speed = CAR_SPEED  # m/s
         self.waypoints = waypoints
         self.waypoint_names = waypoint_names
+        self.waypoints_real = waypoints_real  # Store real-world coordinates
+        self.waypoint_real_dict = waypoint_real_dict  # Store real-world mapping
         self.current_target = None
-        self.current_location_name = "Start"
+        self.current_location_name = "start"
         self.destination_name = None
         self.moving = False
         self.threshold = WAYPOINT_THRESHOLD
@@ -1267,6 +1281,9 @@ class CarRobot:
             name: position
             for name, position in zip(self.waypoint_names, self.waypoints)
         }
+        self.previous_waypoint_real = self.waypoint_real_dict[
+            "start"
+        ]  # Initialize previous waypoint
         logger.info(f"Waypoint Dictionary Initialized: {self.waypoint_dict}")
         self.create_sensors()  # Now called after setting self.camera
 
@@ -1275,6 +1292,8 @@ class CarRobot:
 
         # Initialize movement trail
         self.previous_positions = []
+
+        self.serial_reader = None
 
         # Define waypoint paths
         # --- ADDED FOR DEBUG: path logs
@@ -1554,6 +1573,23 @@ class CarRobot:
             if waypoint_name:
                 self.current_location_name = waypoint_name
                 logger.info(f"Updated current_location_name -> {waypoint_name}")
+
+                # Calculate distance from previous waypoint
+                current_waypoint_real = self.waypoint_real_dict.get(waypoint_name)
+                if current_waypoint_real and self.previous_waypoint_real:
+                    distance_meters = math.hypot(
+                        current_waypoint_real[0] - self.previous_waypoint_real[0],
+                        current_waypoint_real[1] - self.previous_waypoint_real[1],
+                    )
+                    logger.info(
+                        f"Distance from '{self.get_waypoint_name_from_real(self.previous_waypoint_real)}' to '{waypoint_name}': {distance_meters:.2f} meters"
+                    )
+                    # Send distance to Arduino
+                    self.send_distance_to_arduino(distance_meters)
+
+                # Update previous waypoint
+                self.previous_waypoint_real = current_waypoint_real
+
             if self.path:
                 self.current_target = self.path.pop(0)
                 next_wp_name = self.get_waypoint_name(self.current_target)
@@ -1791,7 +1827,11 @@ class CarRobot:
             pygame.draw.lines(surface, BLUE, False, self.previous_positions, 2)
 
     def send_command(self, command):
-        self.serial_reader.send_command(command)
+        if self.serial_reader:
+            self.serial_reader.send_command(command)
+            logger.info(f"Sent to Arduino: '{command}'")
+        else:
+            logger.error("SerialReader not assigned to CarRobot.")
 
     def process_commands(self):
         try:
@@ -1854,6 +1894,32 @@ class CarRobot:
             target=open_browser_after_delay, args=(url,), daemon=True
         ).start()
         app.run(debug=False, port=5000, use_reloader=False)
+
+    def send_distance_to_arduino(self, distance_meters):
+        """
+        Sends the distance to Arduino in meters.
+        The distance is formatted as 'DISTANCE 7.00' only when distance_meters is approximately 7 meters.
+        """
+        # Define tolerance to account for floating-point precision
+        tolerance = 0.1  # meters
+
+        if abs(distance_meters - 7.0) <= tolerance:
+            distance_message = "DISTANCE 7.00"
+            self.send_command(distance_message)
+            logger.info(f"Sent to Arduino: '{distance_message}'")
+        else:
+            logger.debug(
+                f"Distance {distance_meters:.2f} not equal to 7.00 meters. No message sent."
+            )
+
+    def get_waypoint_name_from_real(self, real_coords):
+        """
+        Retrieves the waypoint name given its real-world coordinates.
+        """
+        for name, coords in self.waypoint_real_dict.items():
+            if coords == real_coords:
+                return name
+        return "Unknown"
 
     def run(self):
         flask_thread = threading.Thread(target=self.run_flask_app, daemon=True)
@@ -1982,9 +2048,28 @@ class SerialReader(threading.Thread):
                                     self.car.moving = True
                                     self.car.state_reason = "Moving towards waypoint"
                                     self.game.send_command("START_SERVO")
+                    elif line.startswith("ACK:"):
+                        # Handle acknowledgment messages
+                        ack_message = line.replace("ACK:", "").strip()
+                        logger.info(f"Arduino Acknowledgment: {ack_message}")
+                        # You can add more logic here based on the acknowledgment
         except serial.SerialException as e:
             logger.error(f"Serial Exception: {e}")
             self.running = False
+
+    def send_command(self, command):
+        if self.ser and self.ser.is_open:
+            try:
+                self.ser.write(f"{command}\n".encode("utf-8"))
+                logger.info(f"Sent command to Arduino: '{command}'")
+            except serial.SerialException as e:
+                logger.error(f"Failed to send command '{command}': {e}")
+
+    def stop(self):
+        self.running = False
+        if self.ser and self.ser.is_open:
+            self.ser.close()
+            logger.info("Serial connection closed.")
 
     def send_command(self, command):
         if self.ser and self.ser.is_open:
@@ -2018,6 +2103,7 @@ class Game:
         # Define waypoints in real-world coordinates and scale them
         self.define_waypoints()
 
+        # Instantiate CarRobot with real-world waypoint data
         self.car = CarRobot(
             self.waypoints[0][0],
             self.waypoints[0][1],
@@ -2026,9 +2112,18 @@ class Game:
             self.walls,
             prompt_queue,
             self.camera,  # Pass camera reference
+            self.waypoints_real,  # Pass real-world waypoints
+            self.waypoint_real_dict,  # Pass real-world waypoint mapping
         )
+        # Instantiate SerialReader
         self.serial_reader = SerialReader(SERIAL_PORT, BAUD_RATE, self.car, self)
+
+        # **Assign SerialReader to CarRobot**
+        self.car.serial_reader = self.serial_reader  # **Fix Applied Here**
+
+        # Start the SerialReader thread
         self.serial_reader.start()
+
         self.previous_moving_state = False
 
         # For drawing corridor outlines
@@ -2156,7 +2251,6 @@ class Game:
         Then scale them to screen coordinates.
         """
         # Define waypoints in real-world coordinates (meters)
-        # Ensure they are between inner and outer boundaries
         waypoints_real = [
             (2.5, 21.75),  # start
             (9.5, 21.75),  # m415
@@ -2186,17 +2280,25 @@ class Game:
             # Invert y-axis for Pygame
             return PAD + int((real_height - ry) * SCALE)
 
-        # Scale waypoints
+        # Scale waypoints to screen coordinates
         self.waypoints = [(scale_x(rx), scale_y(ry)) for (rx, ry) in waypoints_real]
+        self.waypoints_real = waypoints_real  # Store real-world coordinates
 
+        # Create mappings for scaled and real-world coordinates
         self.waypoint_dict = {
             name: position
             for name, position in zip(self.waypoint_names, self.waypoints)
         }
+        self.waypoint_real_dict = {
+            name: position
+            for name, position in zip(self.waypoint_names, self.waypoints_real)
+        }
 
-        # Debugging: Log the scaled waypoints
+        # Debugging: Log the scaled and real-world waypoints
         for name, pos in self.waypoint_dict.items():
-            logger.info(f"Waypoint {name}: {pos}")
+            logger.info(f"Waypoint {name}: {pos} (Scaled)")
+        for name, pos in self.waypoint_real_dict.items():
+            logger.info(f"Waypoint {name}: {pos} (Real-world)")
 
     def draw_walls(self, camera):
         for wall in self.walls:
