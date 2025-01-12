@@ -1933,25 +1933,44 @@ class CarRobot:
     def calculate_total_distance(self):
         """
         Calculate the total distance from the current position to the final destination.
+        Includes distances between all waypoints in the path.
         """
+        if not self.path:
+            logger.error("Path is empty. Cannot calculate total distance.")
+            return 0.0  # Return zero distance if the path is empty
+
         total_distance = 0.0
-        current_pos = (self.x, self.y)
 
-        # Include the current position to the first waypoint
-        if self.current_target:
-            total_distance += math.hypot(
-                self.current_target[0] - current_pos[0],
-                self.current_target[1] - current_pos[1],
+        # Calculate distance from the current location to the first waypoint
+        current_real = self.waypoint_real_dict.get(self.current_location_name)
+        first_target_real = self.waypoint_real_dict.get(self.get_waypoint_name(self.path[0]))
+        if current_real and first_target_real:
+            distance_to_first = math.hypot(
+                first_target_real[0] - current_real[0],
+                first_target_real[1] - current_real[1]
+            )
+            total_distance += distance_to_first
+            logger.info(
+                f"Distance from current position {current_real} to first waypoint {first_target_real}: {distance_to_first:.2f} meters"
             )
 
-        # Add distances between waypoints in the path
+        # Calculate distances between consecutive waypoints in the path
         for i in range(len(self.path) - 1):
-            total_distance += math.hypot(
-                self.path[i + 1][0] - self.path[i][0],
-                self.path[i + 1][1] - self.path[i][1],
-            )
+            wp1_real = self.waypoint_real_dict.get(self.get_waypoint_name(self.path[i]))
+            wp2_real = self.waypoint_real_dict.get(self.get_waypoint_name(self.path[i + 1]))
+            if wp1_real and wp2_real:
+                segment_distance = math.hypot(
+                    wp2_real[0] - wp1_real[0],
+                    wp2_real[1] - wp1_real[1]
+                )
+                total_distance += segment_distance
+                logger.info(
+                    f"Distance between waypoints {self.get_waypoint_name(self.path[i])} ({wp1_real}) "
+                    f"and {self.get_waypoint_name(self.path[i + 1])} ({wp2_real}): {segment_distance:.2f} meters"
+                )
 
-        return total_distance / SCALE  # Convert from pixels to meters
+        logger.info(f"Total calculated distance: {total_distance:.2f} meters")
+        return total_distance
 
     def run(self):
         flask_thread = threading.Thread(target=self.run_flask_app, daemon=True)
