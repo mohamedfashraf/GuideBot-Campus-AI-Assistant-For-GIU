@@ -1585,10 +1585,10 @@ class CarRobot:
                         f"Distance from '{self.get_waypoint_name_from_real(self.previous_waypoint_real)}' to '{waypoint_name}': {distance_meters:.2f} meters"
                     )
                     # Send distance to Arduino
-                    self.send_distance_to_arduino(distance_meters)
+                    # self.send_distance_to_arduino(distance_meters)
 
-                # Update previous waypoint
-                self.previous_waypoint_real = current_waypoint_real
+                    # Update previous waypoint
+                    self.previous_waypoint_real = current_waypoint_real
 
             if self.path:
                 self.current_target = self.path.pop(0)
@@ -1654,6 +1654,15 @@ class CarRobot:
             self.path = []
             logger.warning(f"No predefined path for {path_key}. Direct target set.")
         logger.info(f"Set target for {destination_name}: {self.current_target}")
+
+        # Calculate the total distance to be traveled
+        total_distance = self.calculate_total_distance()
+
+        # Send the distance to Arduino
+        self.send_command(f"DISTANCE {total_distance:.2f}")
+        logger.info(
+            f"Total distance to {destination_name}: {total_distance:.2f} meters"
+        )
 
     def update(self):
         current_time = pygame.time.get_ticks()
@@ -1920,6 +1929,29 @@ class CarRobot:
             if coords == real_coords:
                 return name
         return "Unknown"
+
+    def calculate_total_distance(self):
+        """
+        Calculate the total distance from the current position to the final destination.
+        """
+        total_distance = 0.0
+        current_pos = (self.x, self.y)
+
+        # Include the current position to the first waypoint
+        if self.current_target:
+            total_distance += math.hypot(
+                self.current_target[0] - current_pos[0],
+                self.current_target[1] - current_pos[1],
+            )
+
+        # Add distances between waypoints in the path
+        for i in range(len(self.path) - 1):
+            total_distance += math.hypot(
+                self.path[i + 1][0] - self.path[i][0],
+                self.path[i + 1][1] - self.path[i][1],
+            )
+
+        return total_distance / SCALE  # Convert from pixels to meters
 
     def run(self):
         flask_thread = threading.Thread(target=self.run_flask_app, daemon=True)
