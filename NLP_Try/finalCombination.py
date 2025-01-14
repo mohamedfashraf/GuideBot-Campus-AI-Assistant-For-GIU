@@ -1272,6 +1272,7 @@ class CarRobot:
         self.is_returning_to_start = False
         self.prompt_queue = prompt_queue
         self.camera = camera  # Reference to the camera
+        self.next_waypoint = None  # Add this line
         self.sensors = []
         self.path = []
         self.arduino_obstacle_detected = False
@@ -1473,17 +1474,18 @@ class CarRobot:
         self.state_reason = "Returning to start"
 
     def get_target_angle(self):
-        """
-        Returns the angle (in degrees) from the robot's current position (self.x, self.y)
-        to the current_target (target_x, target_y).
-        """
         if not self.current_target:
+            logger.debug("No current target. Returning current angle.")
             return self.angle
         target_x, target_y = self.current_target
         dx = target_x - self.x
         dy = self.y - target_y  # Inverted Y-axis for Pygame
         angle = math.degrees(math.atan2(dy, dx))
-        return angle % 360
+        angle = angle % 360
+        logger.debug(
+            f"Calculating target angle: dx={dx}, dy={dy}, raw_angle={math.degrees(math.atan2(dy, dx)):.2f}°, final_angle={angle:.2f}°"
+        )
+        return angle
 
     def update_sensors(self):
         self.create_sensors()
@@ -1523,15 +1525,100 @@ class CarRobot:
         ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom
         return 0 <= ua <= 1 and 0 <= ub <= 1
 
+    def get_angle_to_next_waypoint(self):
+        if not self.next_waypoint:
+            logger.debug("No next waypoint. Returning current angle.")
+            return self.angle
+        target_x, target_y = self.next_waypoint
+        dx = target_x - self.x
+        dy = self.y - target_y  # Inverted Y-axis for Pygame
+        angle = math.degrees(math.atan2(dy, dx))
+        angle = angle % 360
+        logger.debug(
+            f"Calculating angle to next waypoint: dx={dx}, dy={dy}, raw_angle={math.degrees(math.atan2(dy, dx)):.2f}°, final_angle={angle:.2f}°"
+        )
+        return angle
+
+    def compute_single_turn(self, full_waypoints):
+        """
+        Given a list of waypoints (including the robot's *current position* as first),
+        returns a dict:
+        {
+            "turn_angle": float,              # first non-trivial angle difference
+            "turn_distance_from_start": float # how many meters from the *start* to that turn
+        }
+        If no turn is found, set them to 0.0
+        """
+
+        if len(full_waypoints) < 3:
+            # Not enough segments to detect a turn
+            return {"turn_angle": 0.0, "turn_distance_from_start": 0.0}
+
+        # 1) Build arrays for angles and cumulative distances
+        segment_angles = []
+        cumul_dist = [
+            0.0
+        ]  # cumul_dist[i] = distance from the 0th waypoint up to i-th waypoint
+
+        for i in range(len(full_waypoints) - 1):
+            A = full_waypoints[i]
+            B = full_waypoints[i + 1]
+
+            # distance from A to B in *meters*
+            dist_pixels = math.hypot(B[0] - A[0], B[1] - A[1])
+            dist_meters = dist_pixels / SCALE
+            cumul_dist.append(cumul_dist[-1] + dist_meters)
+
+            # angle for the segment i
+            dx = B[0] - A[0]
+            dy = A[1] - B[1]  # because Pygame's Y is inverted
+            seg_angle = math.degrees(math.atan2(dy, dx)) % 360
+            segment_angles.append(seg_angle)
+
+        # 2) Find the first non-trivial turn
+        #    A turn is the difference between consecutive segment angles
+        for i in range(len(segment_angles) - 1):
+            angle1 = segment_angles[i]
+            angle2 = segment_angles[i + 1]
+            diff = (angle2 - angle1 + 360) % 360
+            if diff > 180:
+                diff -= 360
+            # if magnitude is > ~1°, we consider it a turn
+            if abs(diff) > 1.0:
+                turn_angle = diff
+                # The turn occurs at waypoint index (i+1),
+                # so distance is cumul_dist[i+1].
+                turn_dist = cumul_dist[i + 1]
+                return {"turn_angle": turn_angle, "turn_distance_from_start": turn_dist}
+
+        # If no turn found:
+        return {"turn_angle": 0.0, "turn_distance_from_start": 0.0}
+
+    def set_next_waypoint(self):
+        if self.path:
+            self.next_waypoint = self.path[0]
+            next_wp_name = self.get_waypoint_name(self.next_waypoint)
+            logger.debug(
+                f"Next waypoint set to {next_wp_name} at position {self.next_waypoint}"
+            )
+        else:
+            self.next_waypoint = None
+            logger.debug("No next waypoint. Current target is the final destination.")
+
     def rotate(self, angle_change):
         original_angle = self.angle
         self.angle = (self.angle + angle_change) % 360
+        logger.debug(
+            f"Rotating: Original angle={original_angle:.2f}°, Angle change={angle_change:.2f}°, New angle={self.angle:.2f}°"
+        )
         self.update_sensors()
         if self.check_collision(self.x, self.y):
             self.angle = original_angle
             self.update_sensors()
             self.state_reason = "Cannot rotate due to collision"
             logger.info("Rotation blocked due to collision.")
+        else:
+            logger.info(f"Rotation successful. New angle: {self.angle:.2f}°")
 
     def rotate_towards_target(self, target_angle, elapsed_time):
         angle_diff = (target_angle - self.angle + 360) % 360
@@ -1637,6 +1724,7 @@ class CarRobot:
         return collision
 
     def set_target(self, target_point, destination_name):
+        logger.info(f"Setting target to {destination_name} at position {target_point}")
         self.destination_name = destination_name
         self.moving = True
         self.state_reason = f"Moving towards {destination_name.replace('_', ' ')}"
@@ -1658,9 +1746,19 @@ class CarRobot:
             next_wp_name = self.get_waypoint_name(self.current_target)
             self.state_reason = f"Moving towards waypoint {next_wp_name}"
             logger.info(f"New target set -> {self.current_target} ({next_wp_name})")
+
+            # Update current_waypoint_index
+            try:
+                self.current_waypoint_index = self.waypoint_names.index(next_wp_name)
+            except ValueError:
+                logger.error(
+                    f"Waypoint name {next_wp_name} not found in waypoint_names."
+                )
+                self.current_waypoint_index = -1  # Invalid index
         else:
             self.current_target = target_point
             logger.info(f"Set current target directly to: {self.current_target}")
+            self.current_waypoint_index = -1  # Indicates no further waypoints
 
         # Calculate total distance
         total_distance = self.calculate_total_distance()
@@ -1677,25 +1775,68 @@ class CarRobot:
         self.angle_diff = angle_diff
         logger.debug(f"angle_diff set to: {self.angle_diff:.2f} degrees")
 
-        # Determine turn distance
-        if math.isclose(angle_diff, 0.0, abs_tol=1e-2):
+        # Set next_waypoint for look-ahead
+        self.set_next_waypoint()
+
+        # Determine turn_distance based on next_waypoint
+        if self.next_waypoint:
+            target_angle_next = self.get_angle_to_next_waypoint()
+            angle_diff_next = (target_angle_next - self.angle + 360) % 360
+            if angle_diff_next > 180:
+                angle_diff_next -= 360
+            logger.debug(f"Next angle_diff: {angle_diff_next:.2f} degrees")
+
+            if not math.isclose(angle_diff_next, 0.0, abs_tol=1e-2):
+                # Turn is required for the next segment
+                # Calculate the distance from current position to the turn waypoint
+                turn_wp_coords = self.next_waypoint
+                distance_to_turn_wp = math.hypot(
+                    turn_wp_coords[0] - self.x, turn_wp_coords[1] - self.y
+                )
+                # Set turn_distance slightly before the turn waypoint
+                # For example, 0.5 meters before
+                self.turn_distance = max(
+                    0.5, distance_to_turn_wp - 0.5
+                )  # Ensure it's non-negative
+                logger.info(
+                    f"Turn required for next segment. Setting turn_distance to {self.turn_distance:.2f} meters."
+                )
+            else:
+                # No turn required for next segment
+                self.turn_distance = 7.0  # Default turn distance
+                logger.info(
+                    f"No turn required for next segment. Setting turn_distance to {self.turn_distance:.2f} meters."
+                )
+        else:
+            # No next_waypoint; set default turn_distance
+            self.turn_distance = 7.0
+            logger.info(
+                f"No next waypoint. Setting default turn_distance to {self.turn_distance:.2f} meters."
+            )
+
+        # Determine if immediate rotation is needed
+        if math.isclose(self.angle_diff, 0.0, abs_tol=1e-2):
             self.turn_distance = 0.0  # No turn needed
             self.turn_performed = True  # Mark as performed to skip rotation
             logger.info(
                 "No turn needed for angle difference 0°. Proceeding directly to target."
             )
-        elif math.isclose(angle_diff, 180.0, abs_tol=1e-2):
+        elif math.isclose(abs(self.angle_diff), 180.0, abs_tol=1e-2):
             self.turn_distance = 0.0  # Immediate turn
             logger.info("180° turn detected. Turn will be performed immediately.")
         else:
-            self.turn_distance = 7.0  # Meters before turning
-            logger.info(
-                f"{angle_diff:.2f}° turn detected. Turn will be performed after moving {self.turn_distance} meters."
-            )
+            # If turn_distance not set by next_waypoint logic, set to default
+            if not hasattr(self, "turn_distance") or self.turn_distance <= 0.0:
+                self.turn_distance = 7.0
+                logger.info(
+                    f"Setting default turn_distance to {self.turn_distance:.2f} meters."
+                )
 
         # Reset turn_performed flag unless angle_diff is 0
         if not math.isclose(angle_diff, 0.0, abs_tol=1e-2):
             self.turn_performed = False
+        else:
+            self.turn_performed = True  # Already handled
 
         # Perform immediate turn if needed (only for 180° turns)
         if self.turn_distance == 0.0 and not math.isclose(
@@ -1705,12 +1846,29 @@ class CarRobot:
             self.turn_performed = True
             logger.info("Performed immediate 180° turn.")
 
-        # Send distance and angle to Arduino
-        command_str = f"DISTANCE {total_distance:.2f} ANGLE {angle_diff:.2f}"
+        # 1) Build a list that starts with current (x,y) and includes the path
+        full_waypoints = []
+        full_waypoints.append((self.x, self.y))
+        full_waypoints.extend(self.path)
+
+        # 2) Compute single-turn data
+        turn_data = self.compute_single_turn(full_waypoints)
+        turn_angle = turn_data["turn_angle"]
+        turn_dist = turn_data["turn_distance_from_start"]
+
+        # 3) You can optionally log or send them to Arduino
+        logger.info(
+            f"[SingleTurn] turn_angle={turn_angle:.2f}°, "
+            f"turn_distance_from_start={turn_dist:.2f} m"
+        )
+
+        # If you want to include them in the same command string:
+        command_str = f"DISTANCE {total_distance:.2f} ANGLE {angle_diff:.2f} TURN_DIST {turn_dist:.2f}"
         self.send_command(command_str)
         logger.info(
             f"Total distance to {destination_name}: {total_distance:.2f} meters, "
-            f"Angle difference: {angle_diff:.2f} degrees"
+            f"Angle difference: {angle_diff:.2f} degrees, "
+            f"First turn angle: {turn_angle:.2f}°, occurs at {turn_dist:.2f} m"
         )
 
     def update(self):
@@ -1718,14 +1876,10 @@ class CarRobot:
         elapsed_time = (current_time - self.last_update_time) / 1000.0
         self.last_update_time = current_time
 
-        # Log the initial state at the start of update
         logger.debug(
-            f"[update] Start:"
-            f" moving={self.moving},"
-            f" current_target={self.current_target},"
-            f" current_location={self.current_location_name},"
-            f" arduino_obstacle={self.arduino_obstacle_detected},"
-            f" reason={self.state_reason}"
+            f"[update] Start: moving={self.moving}, current_target={self.current_target}, "
+            f"current_location={self.current_location_name}, arduino_obstacle={self.arduino_obstacle_detected}, "
+            f"reason={self.state_reason}"
         )
 
         if self.moving and self.current_target:
@@ -1776,6 +1930,29 @@ class CarRobot:
                     f"Turn performed: {self.turn_performed}"
                 )
 
+                # Determine if a turn is needed based on next_waypoint
+                if self.next_waypoint:
+                    target_angle_next = self.get_angle_to_next_waypoint()
+                    angle_diff_next = (target_angle_next - self.angle + 360) % 360
+                    if angle_diff_next > 180:
+                        angle_diff_next -= 360
+                    logger.debug(f"Next angle_diff: {angle_diff_next:.2f} degrees")
+
+                    # If a turn is needed, set turn_distance accordingly
+                    if not math.isclose(angle_diff_next, 0.0, abs_tol=1e-2):
+                        # Determine at what distance before current target to perform the turn
+                        # For simplicity, set to half of the remaining distance to target
+                        self.turn_distance = min(7.0, distance_meters / 2)
+                        logger.info(
+                            f"Turn required. Setting turn_distance to {self.turn_distance:.2f} meters."
+                        )
+                    else:
+                        # No turn needed for next segment
+                        self.turn_distance = 7.0  # Default
+                else:
+                    # No next waypoint; set default turn_distance
+                    self.turn_distance = 7.0
+
                 if distance_meters <= self.turn_distance and not self.turn_performed:
                     # Perform the turn only if angle_diff is not 0
                     if not math.isclose(self.angle_diff, 0.0, abs_tol=1e-2):
@@ -1802,8 +1979,8 @@ class CarRobot:
 
                     rotate_speed = CAR_ROTATION_SPEED * elapsed_time
                     logger.debug(
-                        f"[update] No obstacle. TargetAngle={t_angle:.1f}, "
-                        f"CurrentAngle={self.angle:.1f}, a_diff={a_diff:.1f}"
+                        f"[update] No obstacle. TargetAngle={t_angle:.1f}°, "
+                        f"CurrentAngle={self.angle:.1f}°, a_diff={a_diff:.1f}°"
                     )
 
                     # Check if we need to rotate first
