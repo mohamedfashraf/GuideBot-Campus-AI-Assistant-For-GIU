@@ -1480,9 +1480,10 @@ class CarRobot:
             return self.angle
         target_x, target_y = self.current_target
         dx = target_x - self.x
-        dy = self.y - target_y
+        dy = self.y - target_y  # Inverted Y-axis for Pygame
         angle = math.degrees(math.atan2(dy, dx))
         return angle % 360
+
 
     def update_sensors(self):
         self.create_sensors()
@@ -1640,6 +1641,7 @@ class CarRobot:
         self.moving = True
         self.state_reason = f"Moving towards {destination_name.replace('_', ' ')}"
         self.update_sensors()
+        
         path_key = (self.current_location_name.lower(), destination_name.lower())
         if path_key in self.waypoint_paths:
             path_names = self.waypoint_paths[path_key]
@@ -1650,10 +1652,7 @@ class CarRobot:
             self.path = []
             logger.warning(f"No predefined path for {path_key}. Direct target set.")
 
-        # **Calculate the total distance before popping the path**
-        total_distance = self.calculate_total_distance()
-
-        # Now pop the first waypoint to set as the current target
+        # **Step 1: Update `current_target` before calculating distance and angle**
         if self.path:
             self.current_target = self.path.pop(0)
             logger.info(f"New target: {self.current_target}")
@@ -1662,12 +1661,27 @@ class CarRobot:
             self.current_target = target_point
             logger.info(f"Set current target directly to: {self.current_target}")
 
+        # **Step 2: Calculate the total distance after updating `current_target`**
+        total_distance = self.calculate_total_distance()
+
+        # **Step 3: Calculate the target angle from current position to target**
+        target_angle = self.get_target_angle()
+        angle_diff = (target_angle - self.angle + 360) % 360
+        if angle_diff > 180:
+            angle_diff -= 360  # Normalize to [-180, 180] degrees
+
+        # **Step 4: If the angle difference is negligible, set to 0**
+        if abs(angle_diff) < 1e-2:
+            angle_diff = 0.0
+
         logger.info(f"Set target for {destination_name}: {self.current_target}")
 
-        # Send the distance to Arduino
-        self.send_command(f"DISTANCE {total_distance:.2f}")
+        # **Step 5: Send the distance and angle to Arduino**
+        command_str = f"DISTANCE {total_distance:.2f} ANGLE {angle_diff:.2f}"
+        self.send_command(command_str)
         logger.info(
-            f"Total distance to {destination_name}: {total_distance:.2f} meters"
+            f"Total distance to {destination_name}: {total_distance:.2f} meters, "
+            f"Angle difference: {angle_diff:.2f} degrees"
         )
 
     def update(self):
