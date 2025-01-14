@@ -1552,7 +1552,7 @@ class CarRobot:
             self.x = new_x
             self.y = new_y
             self.update_sensors()
-            logger.info(f"Moved to ({self.x:.2f}, {self.y:.2f})")
+            logger.debug(f"Moved to ({self.x:.2f}, {self.y:.2f})")
         else:
             logger.warning("Collision detected! Movement blocked.")
 
@@ -1646,17 +1646,23 @@ class CarRobot:
             logger.info(f"Path for {path_key}: {path_names}")
             self.path = [self.waypoint_dict[wp] for wp in path_names]
             logger.info(f"Resolved path coords: {self.path}")
-            if self.path:
-                self.current_target = self.path.pop(0)
-                logger.info(f"First target: {self.current_target}")
         else:
-            self.current_target = target_point
             self.path = []
             logger.warning(f"No predefined path for {path_key}. Direct target set.")
-        logger.info(f"Set target for {destination_name}: {self.current_target}")
 
-        # Calculate the total distance to be traveled
+        # **Calculate the total distance before popping the path**
         total_distance = self.calculate_total_distance()
+
+        # Now pop the first waypoint to set as the current target
+        if self.path:
+            self.current_target = self.path.pop(0)
+            logger.info(f"New target: {self.current_target}")
+        else:
+            # If no predefined path, set the current target directly
+            self.current_target = target_point
+            logger.info(f"Set current target directly to: {self.current_target}")
+
+        logger.info(f"Set target for {destination_name}: {self.current_target}")
 
         # Send the distance to Arduino
         self.send_command(f"DISTANCE {total_distance:.2f}")
@@ -1932,42 +1938,54 @@ class CarRobot:
 
     def calculate_total_distance(self):
         """
-        Calculate the total distance from the current position to the final destination.
-        Includes distances between all waypoints in the path.
+        Calculate the total distance from the current location to the final destination.
+        Includes distances between all waypoints in the path and the current target.
         """
-        if not self.path:
-            logger.error("Path is empty. Cannot calculate total distance.")
-            return 0.0  # Return zero distance if the path is empty
-
         total_distance = 0.0
 
-        # Calculate distance from the current location to the first waypoint
+        # Get current location's real-world coordinates
         current_real = self.waypoint_real_dict.get(self.current_location_name)
-        first_target_real = self.waypoint_real_dict.get(self.get_waypoint_name(self.path[0]))
-        if current_real and first_target_real:
-            distance_to_first = math.hypot(
-                first_target_real[0] - current_real[0],
-                first_target_real[1] - current_real[1]
+        if not current_real:
+            logger.error(
+                f"Current location '{self.current_location_name}' not found in waypoint_real_dict."
             )
-            total_distance += distance_to_first
-            logger.info(
-                f"Distance from current position {current_real} to first waypoint {first_target_real}: {distance_to_first:.2f} meters"
-            )
+            return 0.0
 
-        # Calculate distances between consecutive waypoints in the path
-        for i in range(len(self.path) - 1):
-            wp1_real = self.waypoint_real_dict.get(self.get_waypoint_name(self.path[i]))
-            wp2_real = self.waypoint_real_dict.get(self.get_waypoint_name(self.path[i + 1]))
-            if wp1_real and wp2_real:
-                segment_distance = math.hypot(
-                    wp2_real[0] - wp1_real[0],
-                    wp2_real[1] - wp1_real[1]
+        # If there's a current target, add distance from current location to current target
+        if self.current_target:
+            target_name = self.get_waypoint_name(self.current_target)
+            target_real = self.waypoint_real_dict.get(target_name)
+            if not target_real:
+                logger.error(
+                    f"Target waypoint '{target_name}' not found in waypoint_real_dict."
                 )
-                total_distance += segment_distance
-                logger.info(
-                    f"Distance between waypoints {self.get_waypoint_name(self.path[i])} ({wp1_real}) "
-                    f"and {self.get_waypoint_name(self.path[i + 1])} ({wp2_real}): {segment_distance:.2f} meters"
-                )
+                return 0.0
+            distance_to_target = math.hypot(
+                target_real[0] - current_real[0],
+                target_real[1] - current_real[1],
+            )
+            total_distance += distance_to_target
+            logger.info(
+                f"Distance from '{self.current_location_name}' to '{target_name}': {distance_to_target:.2f} meters"
+            )
+            current_real = target_real  # Update current_real to the target's position
+
+        # Add distances between consecutive waypoints in the remaining path
+        for wp in self.path:
+            wp_name = self.get_waypoint_name(wp)
+            wp_real = self.waypoint_real_dict.get(wp_name)
+            if not wp_real:
+                logger.error(f"Waypoint '{wp_name}' not found in waypoint_real_dict.")
+                continue  # Skip if waypoint data is missing
+            segment_distance = math.hypot(
+                wp_real[0] - current_real[0],
+                wp_real[1] - current_real[1],
+            )
+            total_distance += segment_distance
+            logger.info(
+                f"Distance from '{self.get_waypoint_name_from_real(current_real)}' to '{wp_name}': {segment_distance:.2f} meters"
+            )
+            current_real = wp_real  # Update current_real for the next segment
 
         logger.info(f"Total calculated distance: {total_distance:.2f} meters")
         return total_distance
