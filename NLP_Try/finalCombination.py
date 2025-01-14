@@ -1865,7 +1865,7 @@ class CarRobot:
         # If you want to include them in the same command string:
         command_str = (
             f"DISTANCE {total_distance:.2f} "
-            f"ANGLE {angle_diff:.2f} "
+            # f"ANGLE {angle_diff:.2f} " # until testing is done
             f"TURN_DIST {turn_dist:.2f} "
             f"TURN_ANGLE {turn_angle:.2f}"
         )
@@ -2380,14 +2380,6 @@ class SerialReader(threading.Thread):
             logger.error(f"Serial Exception: {e}")
             self.running = False
 
-    def send_command(self, command):
-        if self.ser and self.ser.is_open:
-            try:
-                self.ser.write(f"{command}\n".encode("utf-8"))
-                logger.info(f"Sent command to Arduino: '{command}'")
-            except serial.SerialException as e:
-                logger.error(f"Failed to send command '{command}': {e}")
-
     def stop(self):
         self.running = False
         if self.ser and self.ser.is_open:
@@ -2398,7 +2390,7 @@ class SerialReader(threading.Thread):
         if self.ser and self.ser.is_open:
             try:
                 self.ser.write(f"{command}\n".encode("utf-8"))
-                logger.info(f"Sent command to Arduino: {command}")
+                logger.info(f"Sent command to Arduino: '{command}'")
             except serial.SerialException as e:
                 logger.error(f"Failed to send command '{command}': {e}")
 
