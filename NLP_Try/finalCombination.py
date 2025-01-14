@@ -1810,7 +1810,7 @@ class CarRobot:
         else:
             # No next_waypoint; set default turn_distance
             self.turn_distance = 7.0
-            logger.info(
+            logger.debug(
                 f"No next waypoint. Setting default turn_distance to {self.turn_distance:.2f} meters."
             )
 
@@ -2570,7 +2570,7 @@ class Game:
         """
         # Define waypoints in real-world coordinates (meters)
         waypoints_real = [
-            (2.5, 21.75),  # start
+            (6.5, 21.75),  # start
             (9.5, 21.75),  # m415
             (16.5, 21.75),  # m416
             (23.5, 21.75),  # admission
@@ -2809,11 +2809,9 @@ class Game:
         """Update elements that depend on zoom level, such as sensors."""
         self.car.update_sensors()
 
-
 def open_browser_after_delay(url, delay=1):
     time.sleep(delay)
     webbrowser.open(url)
-
 
 if __name__ == "__main__":
     try:
