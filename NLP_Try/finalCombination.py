@@ -1281,6 +1281,7 @@ class CarRobot:
             name: position
             for name, position in zip(self.waypoint_names, self.waypoints)
         }
+        self.angle_diff = 0.0
         self.previous_waypoint_real = self.waypoint_real_dict[
             "start"
         ]  # Initialize previous waypoint
@@ -1484,7 +1485,6 @@ class CarRobot:
         angle = math.degrees(math.atan2(dy, dx))
         return angle % 360
 
-
     def update_sensors(self):
         self.create_sensors()
 
@@ -1641,7 +1641,7 @@ class CarRobot:
         self.moving = True
         self.state_reason = f"Moving towards {destination_name.replace('_', ' ')}"
         self.update_sensors()
-        
+
         path_key = (self.current_location_name.lower(), destination_name.lower())
         if path_key in self.waypoint_paths:
             path_names = self.waypoint_paths[path_key]
@@ -1652,31 +1652,51 @@ class CarRobot:
             self.path = []
             logger.warning(f"No predefined path for {path_key}. Direct target set.")
 
-        # **Step 1: Update `current_target` before calculating distance and angle**
+        # Update current_target
         if self.path:
             self.current_target = self.path.pop(0)
-            logger.info(f"New target: {self.current_target}")
+            next_wp_name = self.get_waypoint_name(self.current_target)
+            self.state_reason = f"Moving towards waypoint {next_wp_name}"
+            logger.info(f"New target set -> {self.current_target} ({next_wp_name})")
         else:
-            # If no predefined path, set the current target directly
             self.current_target = target_point
             logger.info(f"Set current target directly to: {self.current_target}")
 
-        # **Step 2: Calculate the total distance after updating `current_target`**
+        # Calculate total distance
         total_distance = self.calculate_total_distance()
 
-        # **Step 3: Calculate the target angle from current position to target**
+        # Calculate target angle
         target_angle = self.get_target_angle()
         angle_diff = (target_angle - self.angle + 360) % 360
+
+        # Normalize angle_diff to [-180, 180]
         if angle_diff > 180:
-            angle_diff -= 360  # Normalize to [-180, 180] degrees
+            angle_diff -= 360
 
-        # **Step 4: If the angle difference is negligible, set to 0**
-        if abs(angle_diff) < 1e-2:
-            angle_diff = 0.0
+        # Assign angle_diff
+        self.angle_diff = angle_diff
+        logger.debug(f"angle_diff set to: {self.angle_diff:.2f} degrees")
 
-        logger.info(f"Set target for {destination_name}: {self.current_target}")
+        # Determine turn distance
+        if math.isclose(angle_diff, 180.0, abs_tol=1e-2):
+            self.turn_distance = 0.0  # Immediate turn
+            logger.info("180° turn detected. Turn will be performed immediately.")
+        else:
+            self.turn_distance = 7.0  # Meters before turning
+            logger.info(
+                f"{angle_diff:.2f}° turn detected. Turn will be performed after moving {self.turn_distance} meters."
+            )
 
-        # **Step 5: Send the distance and angle to Arduino**
+        # Reset turn_performed flag
+        self.turn_performed = False
+
+        # Perform immediate turn if needed
+        if self.turn_distance == 0.0:
+            self.rotate(angle_diff)
+            self.turn_performed = True
+            logger.info("Performed immediate 180° turn.")
+
+        # Send distance and angle to Arduino
         command_str = f"DISTANCE {total_distance:.2f} ANGLE {angle_diff:.2f}"
         self.send_command(command_str)
         logger.info(
@@ -1737,46 +1757,67 @@ class CarRobot:
             else:
                 # Clear to move
                 self.obstacle_response_sent = False
-                t_angle = self.get_target_angle()
-                a_diff = (t_angle - self.angle + 360) % 360
 
-                # Shortest angle difference
-                if a_diff > 180:
-                    a_diff -= 360
+                # Calculate distance to target in meters
+                distance_meters = self.calculate_distance_to_target()
 
-                rotate_speed = CAR_ROTATION_SPEED * elapsed_time
                 logger.debug(
-                    f"[update] No obstacle. TargetAngle={t_angle:.1f}, "
-                    f"CurrentAngle={self.angle:.1f}, a_diff={a_diff:.1f}"
+                    f"[update] Distance to target: {distance_meters:.2f} meters, "
+                    f"Turn distance: {self.turn_distance:.2f} meters, "
+                    f"Turn performed: {self.turn_performed}"
                 )
 
-                # Check if we need to rotate first
-                if abs(a_diff) > rotate_speed:
-                    self.rotate_towards_target(t_angle, elapsed_time)
-                    self.state_reason = "Rotating towards target"
-                    logger.debug("[update] Rotating toward target.")
-                else:
-                    # Align exactly, then move forward
-                    self.angle = t_angle
-                    self.move_forward(elapsed_time)
-                    self.state_reason = "Moving forward"
-                    logger.debug(
-                        f"[update] Moved forward. New pos=({self.x:.2f},{self.y:.2f})"
+                if distance_meters <= self.turn_distance and not self.turn_performed:
+                    # Perform the turn
+                    self.rotate(self.angle_diff)
+                    self.turn_performed = True
+                    self.state_reason = "Performing turn"
+                    logger.info(
+                        f"Performing turn of {self.angle_diff:.2f} degrees at {distance_meters:.2f} meters from target."
                     )
-                    self.check_point_reached()
+                else:
+                    # Continue moving forward
+                    t_angle = self.get_target_angle()
+                    a_diff = (t_angle - self.angle + 360) % 360
 
-        else:
-            # Not moving: could be because we have no target or Arduino says STOP
-            if self.arduino_obstacle_detected:
-                self.state_reason = "Obstacle detected by Arduino"
-                logger.debug("[update] Not moving; Arduino-obstacle condition remains.")
-                if self.started_moving and not self.obstacle_response_sent:
-                    response_queue.put("Excuse me, could you please let me pass?")
-                    self.obstacle_response_sent = True
-            else:
-                self.state_reason = "Stopped"
-                logger.debug("[update] Robot is currently stopped.")
-                self.obstacle_response_sent = False
+                    # Shortest angle difference
+                    if a_diff > 180:
+                        a_diff -= 360
+
+                    rotate_speed = CAR_ROTATION_SPEED * elapsed_time
+                    logger.debug(
+                        f"[update] No obstacle. TargetAngle={t_angle:.1f}, "
+                        f"CurrentAngle={self.angle:.1f}, a_diff={a_diff:.1f}"
+                    )
+
+                    # Check if we need to rotate first
+                    if abs(a_diff) > rotate_speed:
+                        self.rotate_towards_target(t_angle, elapsed_time)
+                        self.state_reason = "Rotating towards target"
+                        logger.debug("[update] Rotating toward target.")
+                    else:
+                        # Align exactly, then move forward
+                        self.angle = t_angle
+                        self.move_forward(elapsed_time)
+                        self.state_reason = "Moving forward"
+                        logger.debug(
+                            f"[update] Moved forward. New pos=({self.x:.2f},{self.y:.2f})"
+                        )
+                        self.check_point_reached()
+
+    def calculate_distance_to_target(self):
+        """
+        Calculates the distance to the current target in meters.
+        """
+        if not self.current_target:
+            logger.warning("No current target set.")
+            return 0.0
+
+        target_x, target_y = self.current_target
+        distance_pixels = math.hypot(target_x - self.x, target_y - self.y)
+        distance_meters = distance_pixels / SCALE
+        logger.debug(f"Calculated distance to target: {distance_meters:.2f} meters")
+        return distance_meters
 
     def draw_status(self, surface):
         font = pygame.font.SysFont(None, 28)
@@ -1878,17 +1919,17 @@ class CarRobot:
                             loc_norm.lower(), self.waypoint_dict.get(loc_norm)
                         )
                         if tpoint:
-                            self.car.set_target(tpoint, loc_norm)
+                            self.set_target(tpoint, loc_norm)  # **Correct Reference**
                             logger.info(f"Set target -> {loc_norm}: {tpoint}")
                             self.send_command("START_SERVO")
                         else:
                             logger.warning(f"Unknown location: {loc_norm}")
                 elif command == "user_choice_done":
-                    logger.info("Got 'user_choice_done' command.")
-                    self.car.return_to_start()
+                    logger.info("Received 'user_choice_done' command.")
+                    self.return_to_start()  # **Correct Reference**
                     response_queue.put("Goodbye, going to start point.")
                 elif command == "user_choice_another":
-                    self.car.state_reason = "Waiting for new command"
+                    self.state_reason = "Waiting for new command"
                     response_queue.put("How may I help you further?")
         except queue.Empty:
             pass
@@ -2085,13 +2126,14 @@ def open_browser_after_delay(url, delay=1):
 
 
 class SerialReader(threading.Thread):
-    def __init__(self, serial_port, baud_rate, car, game):
+
+    def __init__(self, serial_port: str, baud_rate: int, car_robot: "CarRobot", game):
         super().__init__()
         self.serial_port = serial_port
         self.baud_rate = baud_rate
         self.running = True
         self.ser = None
-        self.car = car
+        self.car = car_robot
         self.game = game
         self.state = "STOPPED"
         self.lock = Lock()
@@ -2206,6 +2248,9 @@ class Game:
 
         # Start the SerialReader thread
         self.serial_reader.start()
+
+        self.turn_distance = 0.0  # Initialize turn_distance
+        self.turn_performed = False  # Initialize turn_performed flag
 
         self.previous_moving_state = False
 
