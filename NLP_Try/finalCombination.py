@@ -1863,7 +1863,12 @@ class CarRobot:
         )
 
         # If you want to include them in the same command string:
-        command_str = f"DISTANCE {total_distance:.2f} ANGLE {angle_diff:.2f} TURN_DIST {turn_dist:.2f}"
+        command_str = (
+            f"DISTANCE {total_distance:.2f} "
+            f"ANGLE {angle_diff:.2f} "
+            f"TURN_DIST {turn_dist:.2f} "
+            f"TURN_ANGLE {turn_angle:.2f}"
+        )
         self.send_command(command_str)
         logger.info(
             f"Total distance to {destination_name}: {total_distance:.2f} meters, "
