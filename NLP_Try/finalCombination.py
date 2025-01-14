@@ -1678,7 +1678,13 @@ class CarRobot:
         logger.debug(f"angle_diff set to: {self.angle_diff:.2f} degrees")
 
         # Determine turn distance
-        if math.isclose(angle_diff, 180.0, abs_tol=1e-2):
+        if math.isclose(angle_diff, 0.0, abs_tol=1e-2):
+            self.turn_distance = 0.0  # No turn needed
+            self.turn_performed = True  # Mark as performed to skip rotation
+            logger.info(
+                "No turn needed for angle difference 0°. Proceeding directly to target."
+            )
+        elif math.isclose(angle_diff, 180.0, abs_tol=1e-2):
             self.turn_distance = 0.0  # Immediate turn
             logger.info("180° turn detected. Turn will be performed immediately.")
         else:
@@ -1687,11 +1693,14 @@ class CarRobot:
                 f"{angle_diff:.2f}° turn detected. Turn will be performed after moving {self.turn_distance} meters."
             )
 
-        # Reset turn_performed flag
-        self.turn_performed = False
+        # Reset turn_performed flag unless angle_diff is 0
+        if not math.isclose(angle_diff, 0.0, abs_tol=1e-2):
+            self.turn_performed = False
 
-        # Perform immediate turn if needed
-        if self.turn_distance == 0.0:
+        # Perform immediate turn if needed (only for 180° turns)
+        if self.turn_distance == 0.0 and not math.isclose(
+            angle_diff, 0.0, abs_tol=1e-2
+        ):
             self.rotate(angle_diff)
             self.turn_performed = True
             logger.info("Performed immediate 180° turn.")
@@ -1768,13 +1777,20 @@ class CarRobot:
                 )
 
                 if distance_meters <= self.turn_distance and not self.turn_performed:
-                    # Perform the turn
-                    self.rotate(self.angle_diff)
-                    self.turn_performed = True
-                    self.state_reason = "Performing turn"
-                    logger.info(
-                        f"Performing turn of {self.angle_diff:.2f} degrees at {distance_meters:.2f} meters from target."
-                    )
+                    # Perform the turn only if angle_diff is not 0
+                    if not math.isclose(self.angle_diff, 0.0, abs_tol=1e-2):
+                        self.rotate(self.angle_diff)
+                        self.turn_performed = True
+                        self.state_reason = "Performing turn"
+                        logger.info(
+                            f"Performing turn of {self.angle_diff:.2f} degrees at {distance_meters:.2f} meters from target."
+                        )
+                    else:
+                        # If angle_diff is 0, mark turn as performed without rotating
+                        self.turn_performed = True
+                        logger.info(
+                            f"No turn needed (angle_diff={self.angle_diff:.2f} degrees). Proceeding to target."
+                        )
                 else:
                     # Continue moving forward
                     t_angle = self.get_target_angle()
