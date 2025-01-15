@@ -1863,12 +1863,7 @@ class CarRobot:
         )
 
         # If you want to include them in the same command string:
-        command_str = (
-            f"DISTANCE {total_distance:.2f} "
-            # f"ANGLE {angle_diff:.2f} " # until testing is done
-            f"TURN_DIST {turn_dist:.2f} "
-            f"TURN_ANGLE {turn_angle:.2f}"
-        )
+        command_str = f"{int(total_distance)},{int(turn_dist)},{int(turn_angle)}"
         self.send_command(command_str)
         logger.info(
             f"Total distance to {destination_name}: {total_distance:.2f} meters, "
@@ -2736,7 +2731,7 @@ class Game:
                         # Zoom in with upper limit
                         if self.camera.zoom < 5.0:
                             self.camera.zoom += 0.5  # Increment zoom
-                            logger.info(f"Zoom increased to {self.camera.zoom}")
+                            logger.debug(f"Zoom increased to {self.camera.zoom}")
                             self.update_zoom_related_elements()
                     elif (
                         event.key == pygame.K_MINUS or event.key == pygame.K_UNDERSCORE
@@ -2746,7 +2741,7 @@ class Game:
                             self.camera.zoom = max(
                                 0.5, self.camera.zoom - 0.5
                             )  # Decrement zoom with a minimum limit
-                            logger.info(f"Zoom decreased to {self.camera.zoom}")
+                            logger.debug(f"Zoom decreased to {self.camera.zoom}")
                             self.update_zoom_related_elements()
 
             self.process_commands()
