@@ -2340,7 +2340,15 @@ class SerialReader(threading.Thread):
             )
             while self.running:
                 if self.ser.in_waiting > 0:
-                    line = self.ser.readline().decode("utf-8").strip()
+                    line = self.ser.readline().decode("utf-8", errors="replace").strip()
+
+                    # <<-- ADDED LINE:
+                    # This prints *every* line we receive from Arduino:
+                    # print("Arduino says:", line)
+                    # Alternatively, you could use logger:
+                    logger.info(f"Arduino says: {line}")
+
+                    # Existing logic for parsing:
                     if line.startswith("<STATE>") and line.endswith("</STATE>"):
                         st = (
                             line.replace("<STATE>", "")
@@ -2370,7 +2378,8 @@ class SerialReader(threading.Thread):
                         # Handle acknowledgment messages
                         ack_message = line.replace("ACK:", "").strip()
                         logger.info(f"Arduino Acknowledgment: {ack_message}")
-                        # You can add more logic here based on the acknowledgment
+                        # Add any extra logic here if needed
+
         except serial.SerialException as e:
             logger.error(f"Serial Exception: {e}")
             self.running = False
@@ -2804,9 +2813,11 @@ class Game:
         """Update elements that depend on zoom level, such as sensors."""
         self.car.update_sensors()
 
+
 def open_browser_after_delay(url, delay=1):
     time.sleep(delay)
     webbrowser.open(url)
+
 
 if __name__ == "__main__":
     try:
