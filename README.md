@@ -144,10 +144,6 @@ The **GuideBot-Campus AI Assistant** is an innovative AI-powered robotic assista
 
 - **Mohamed Ashraf Metwally** - Project Lead
 
-## License
-
-This project is licensed under the MIT License. See the `LICENSE` file for details.
-
 ## Acknowledgments
 
 - Special thanks to the GIU faculty for their support and guidance.
