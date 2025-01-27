@@ -142,8 +142,7 @@ The **GuideBot-Campus AI Assistant** is an innovative AI-powered robotic assista
 
 ## Contributors
 
-- **Your Name** - Project Lead
-- **Team Members** - Contributors
+- **Mohamed Ashraf Metwally** - Project Lead
 
 ## License
 
