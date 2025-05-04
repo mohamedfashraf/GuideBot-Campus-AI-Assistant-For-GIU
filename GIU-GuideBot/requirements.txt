@@ -1,1 +1,12 @@
-pip install pygame flask flask-cors flask-socketio eventlet gtts transformers pydub pyserial
+#sudo apt install ffmpeg
+
+pygame
+flask
+flask-cors
+flask-socketio
+eventlet
+gtts
+transformers
+pydub
+pyserial
+torch
