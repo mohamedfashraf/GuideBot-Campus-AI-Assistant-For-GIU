@@ -421,11 +421,11 @@ device = 0 if torch.cuda.is_available() else -1
 log("NLP", f"CUDA available: {torch.cuda.is_available()}")
 nlp = pipeline(
     "zero-shot-classification",
-    model="microsoft/deberta-base-mnli",
-    tokenizer="microsoft/deberta-base-mnli",
+    model="MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli",
+    tokenizer="MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli",
     framework="pt",
     device=device,
-    model_kwargs={"use_safetensors": False},
+    model_kwargs={"use_safetensors": True},
 )
 if device == 0:
     log("NLP", "Pipeline using GPU")
