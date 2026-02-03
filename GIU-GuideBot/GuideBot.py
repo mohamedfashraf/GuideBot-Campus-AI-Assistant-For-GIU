@@ -18,22 +18,34 @@ from gtts import gTTS
 import tempfile
 from transformers import pipeline
 import transformers.safetensors_conversion as _st_convert
+import transformers.utils.hub as _tf_hub
 import logging as py_logging
 from pydub import AudioSegment
 from pydub.playback import play
 import uuid
 import webbrowser
 from threading import Lock
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import re
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
 import torch
+try:
+    from pypdf import PdfReader
+except Exception:
+    PdfReader = None
+import sqlite3
+import warnings
 
 # Initialize thread-safe queues for inter-thread communication
 command_queue = queue.Queue()
 response_queue = queue.Queue()
 prompt_queue = queue.Queue()
+
+# Suppress noisy HF warnings
+warnings.filterwarnings(
+    "ignore", message="You are sending unauthenticated requests to the HF Hub.*"
+)
 
 # -------------------- Constants ---------------------#
 
@@ -70,6 +82,271 @@ outer_points_real = [
 
 # Scale factor based on real-world corridor dimensions and screen size
 PAD = 40  # Padding around corridor in the Pygame window
+
+
+def ensure_rag_db():
+    os.makedirs(PDF_DIR, exist_ok=True)
+    os.makedirs(DATA_DIR, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            doc_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            source TEXT,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts
+        USING fts5(title, content, content='documents', content_rowid='id')
+        """
+    )
+    cur.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS documents_ai
+        AFTER INSERT ON documents BEGIN
+          INSERT INTO documents_fts(rowid, title, content)
+          VALUES (new.id, new.title, new.content);
+        END
+        """
+    )
+    cur.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS documents_ad
+        AFTER DELETE ON documents BEGIN
+          INSERT INTO documents_fts(documents_fts, rowid, title, content)
+          VALUES('delete', old.id, old.title, old.content);
+        END
+        """
+    )
+    cur.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS documents_au
+        AFTER UPDATE ON documents BEGIN
+          INSERT INTO documents_fts(documents_fts, rowid, title, content)
+          VALUES('delete', old.id, old.title, old.content);
+          INSERT INTO documents_fts(rowid, title, content)
+          VALUES (new.id, new.title, new.content);
+        END
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def seed_rag_default_data():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM documents")
+    count = cur.fetchone()[0]
+    if count > 0:
+        conn.close()
+        return
+
+    now = datetime.now(timezone.utc).isoformat()
+    docs = []
+
+    for b_key, b_data in VALID_BUILDINGS.items():
+        for room in b_data["rooms"]:
+            title = f"Room {room}"
+            content = f"{room} is located in {b_data['name']}."
+            if room in weekly_schedule:
+                hours = weekly_schedule[room]
+                sample_day = DAYS_OF_WEEK[0]
+                if sample_day in hours:
+                    content += (
+                        f" Typical hours: {hours[sample_day]['opens_at']} to "
+                        f"{hours[sample_day]['closes_at']}."
+                    )
+            docs.append(("room", title, content, "campus", now))
+
+    for doctor in VALID_DOCTORS:
+        title = f"Doctor {doctor.replace('_', ' ').title()}"
+        content = f"{doctor.replace('_', ' ').title()} has scheduled office hours."
+        if doctor in doctor_availability:
+            content += (
+                f" Example: {DAYS_OF_WEEK[0]} at "
+                f"{', '.join(doctor_availability[doctor][DAYS_OF_WEEK[0]])}."
+            )
+        docs.append(("doctor", title, content, "campus", now))
+
+    docs.extend(
+        [
+            (
+                "admissions",
+                "Admissions Office",
+                "Admissions handles applications, registration, and enrollment. Located in Building M.",
+                "campus",
+                now,
+            ),
+            (
+                "financial",
+                "Financial Office",
+                "Financial Office assists with tuition payment, billing, and scholarships.",
+                "campus",
+                now,
+            ),
+            (
+                "student_affairs",
+                "Student Affairs",
+                "Student Affairs helps with course enrollment, add/drop, and schedules.",
+                "campus",
+                now,
+            ),
+            (
+                "faq",
+                "General Help",
+                "You can ask about rooms, doctor availability, admissions, financial services, or navigation.",
+                "campus",
+                now,
+            ),
+        ]
+    )
+
+    cur.executemany(
+        """
+        INSERT INTO documents (doc_type, title, content, source, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        docs,
+    )
+    conn.commit()
+    conn.close()
+    log("RAG", "Initialized local knowledge base")
+
+
+def ingest_pdfs():
+    if PdfReader is None:
+        log("RAG", "PDF ingestion skipped (pypdf not installed)", logging.WARNING)
+        return
+    if not os.path.isdir(PDF_DIR):
+        return
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    ingested = 0
+    for name in os.listdir(PDF_DIR):
+        if not name.lower().endswith(".pdf"):
+            continue
+        path = os.path.join(PDF_DIR, name)
+        cur.execute("SELECT COUNT(*) FROM documents WHERE source = ?", (name,))
+        if cur.fetchone()[0] > 0:
+            continue
+        try:
+            reader = PdfReader(path)
+            text_parts = []
+            for page in reader.pages:
+                text = page.extract_text() or ""
+                text_parts.append(text)
+            content = "\n".join(text_parts).strip()
+            if not content:
+                continue
+            now = datetime.now(timezone.utc).isoformat()
+            cur.execute(
+                """
+                INSERT INTO documents (doc_type, title, content, source, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("pdf", name, content, name, now),
+            )
+            ingested += 1
+        except Exception:
+            log("RAG", f"Failed to ingest {name}", logging.ERROR)
+    conn.commit()
+    conn.close()
+    if ingested:
+        log("RAG", f"Ingested {ingested} PDF(s)")
+
+
+def rag_search(query, limit=3):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT d.title, d.content, d.source, bm25(documents_fts) as score
+            FROM documents_fts
+            JOIN documents d ON d.id = documents_fts.rowid
+            WHERE documents_fts MATCH ?
+            ORDER BY score
+            LIMIT ?
+            """,
+            (query, limit),
+        )
+        rows = cur.fetchall()
+        conn.close()
+        return rows
+    except Exception:
+        log("RAG", "Search failed", logging.ERROR)
+        return []
+
+
+def rag_answer(query):
+    rows = rag_search(query, limit=1)
+    if not rows:
+        return None
+    title, content, source, score = rows[0]
+    if score is None or score > 10.0:
+        return None
+    return f"{content}"
+
+
+FAST_INTENTS = {
+    "hi": "hi",
+    "hello": "hello",
+    "hey": "hey",
+    "thanks": "thank_you",
+    "thank you": "thank_you",
+    "bye": "bye",
+    "goodbye": "bye",
+    "done": "confirm_yes",
+    "i'm done": "confirm_yes",
+    "yes": "confirm_yes",
+    "yeah": "confirm_yes",
+    "yep": "confirm_yes",
+    "no": "confirm_no",
+    "nope": "confirm_no",
+    "cancel": "confirm_no",
+    "stop": "confirm_no",
+}
+
+
+def detect_fast_intent(text):
+    t = text.strip().lower()
+    for key, label in FAST_INTENTS.items():
+        if t == key:
+            return label
+    return None
+
+
+QUESTION_HINTS = [
+    "what",
+    "where",
+    "when",
+    "how",
+    "who",
+    "which",
+    "tell me",
+    "info",
+    "information",
+    "hours",
+    "open",
+    "close",
+    "schedule",
+    "available",
+]
+
+
+def is_question(text):
+    t = text.strip().lower()
+    if "?" in t:
+        return True
+    return any(hint in t for hint in QUESTION_HINTS)
 
 
 def compute_scale(width_m, height_m, screen_width, screen_height, pad):
@@ -124,11 +401,24 @@ py_logging.getLogger("transformers").setLevel(py_logging.ERROR)
 
 # Disable transformers auto-conversion thread
 _st_convert.auto_conversion = lambda *args, **kwargs: None
+_st_convert.spawn_conversion = lambda *args, **kwargs: None
+_st_convert.get_conversion_pr_reference = lambda *args, **kwargs: None
+_tf_hub.auto_conversion = _st_convert.auto_conversion
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+PDF_DIR = os.path.join(DATA_DIR, "pdfs")
+DB_PATH = os.path.join(DATA_DIR, "guidebot.db")
+
+
+def log(service, message, level=logging.INFO):
+    logger.log(level, f"[{service}] {message}")
 
 # -------------------- Flask App Setup ---------------------#
 
 # Initialize NLP pipeline
 device = 0 if torch.cuda.is_available() else -1
+log("NLP", f"CUDA available: {torch.cuda.is_available()}")
 nlp = pipeline(
     "zero-shot-classification",
     model="microsoft/deberta-base-mnli",
@@ -138,9 +428,9 @@ nlp = pipeline(
     model_kwargs={"use_safetensors": False},
 )
 if device == 0:
-    logger.info("NLP pipeline is using GPU.")
+    log("NLP", "Pipeline using GPU")
 else:
-    logger.info("NLP pipeline is using CPU.")
+    log("NLP", "Pipeline using CPU")
 
 
 # Define buildings and rooms
@@ -293,6 +583,11 @@ def create_doctor_schedule():
 
 doctor_availability = create_doctor_schedule()
 
+# Initialize local RAG store
+ensure_rag_db()
+seed_rag_default_data()
+ingest_pdfs()
+
 
 def check_room_availability(room):
     current_day = datetime.now().strftime("%A")  # Removed .lower()
@@ -414,7 +709,7 @@ executor = ThreadPoolExecutor(max_workers=4)
 @lru_cache(maxsize=128)
 def classify_command_cached(command_text):
     overall_start_time = time.perf_counter()  # Start overall timing
-    logger.info(f"[Classification] Starting classification for: '{command_text}'")
+    log("NLP", f"Classify start: {command_text}")
 
     # Start timing for NLP pipeline
     pipeline_start_time = time.perf_counter()
@@ -427,15 +722,11 @@ def classify_command_cached(command_text):
         )
         pipeline_end_time = time.perf_counter()
         pipeline_elapsed = pipeline_end_time - pipeline_start_time
-        logger.info(
-            f"[Classification] NLP pipeline processing took {pipeline_elapsed:.4f} seconds"
-        )
+        log("NLP", f"Pipeline time {pipeline_elapsed:.3f}s")
     except Exception as e:
         pipeline_end_time = time.perf_counter()
         pipeline_elapsed = pipeline_end_time - pipeline_start_time
-        logger.error(
-            f"[Classification] Error during NLP pipeline processing: {e} (took {pipeline_elapsed:.4f} seconds)"
-        )
+        log("NLP", f"Pipeline error: {e}", logging.ERROR)
         return "none"
 
     # Start timing for post-processing
@@ -448,13 +739,11 @@ def classify_command_cached(command_text):
     ]
     post_end_time = time.perf_counter()
     post_elapsed = post_end_time - post_start_time
-    logger.info(f"[Classification] Post-processing took {post_elapsed:.4f} seconds")
+    log("NLP", f"Post-processing {post_elapsed:.3f}s")
 
     overall_end_time = time.perf_counter()
     overall_elapsed = overall_end_time - overall_start_time
-    logger.info(
-        f"[Classification] Overall classification took {overall_elapsed:.4f} seconds for command: '{command_text}'"
-    )
+    log("NLP", f"Total {overall_elapsed:.3f}s")
 
     return matched_labels[0] if matched_labels else "none"
 
@@ -527,14 +816,22 @@ def doctor_availability_endpoint():
 def handle_command():
     start_time = time.perf_counter()  # Start timing
     data = request.json
-    logger.info(f"Received data: {data}")
+    log("HTTP", "Received request")
     command_text = data.get("text", "").strip()
 
     if command_text:
-        logger.info(f"Command received: {command_text}")
+        log("HTTP", f"Command: {command_text}")
         global pending_action
         with pending_action_lock:
             current_pending = pending_action
+
+        fast_label = detect_fast_intent(command_text)
+        if fast_label:
+            log("NLP", f"Fast intent: {fast_label}")
+            response = open_application(fast_label, command_text)
+            elapsed_time = time.perf_counter() - start_time
+            log("HTTP", f"handle_command {elapsed_time:.3f}s")
+            return response
 
         if current_pending and (
             current_pending.startswith("go_to_")
@@ -546,24 +843,33 @@ def handle_command():
             response = open_application(current_pending, command_text)
             end_time = time.perf_counter()
             elapsed_time = end_time - start_time
-            logger.info(f"handle_command took {elapsed_time:.4f} seconds")
+            log("HTTP", f"handle_command {elapsed_time:.3f}s")
             return response  # Return the Response object directly
+
+        if is_question(command_text):
+            rag_resp = rag_answer(command_text)
+            if rag_resp:
+                response_queue.put(rag_resp)
+                log("RAG", "Answered from local knowledge")
+                elapsed_time = time.perf_counter() - start_time
+                log("HTTP", f"handle_command {elapsed_time:.3f}s")
+                return jsonify({"response": rag_resp})
 
         # Classify the command asynchronously
         future = executor.submit(classify_command_cached, command_text)
         predicted_label = future.result()
-        logger.info(f"Matched label: {predicted_label}")
+        log("NLP", f"Matched label: {predicted_label}")
 
         response = open_application(predicted_label, command_text)
         end_time = time.perf_counter()
         elapsed_time = end_time - start_time
-        logger.info(f"handle_command took {elapsed_time:.4f} seconds")
+        log("HTTP", f"handle_command {elapsed_time:.3f}s")
 
         return response  # Return the Response object directly
 
     end_time = time.perf_counter()
     elapsed_time = end_time - start_time
-    logger.info(f"handle_command took {elapsed_time:.4f} seconds")
+    log("HTTP", f"handle_command {elapsed_time:.3f}s")
     return jsonify({"response": "No command received."})
 
 
@@ -1165,6 +1471,10 @@ def open_application(command, original_command_text):
 
     elif command.lower() in ["hi", "hey", "hello"]:
         response = "Hello! Welcome to GIU's campus. How can I assist you today?"
+    elif command == "thank_you":
+        response = "You're welcome! How else can I help?"
+    elif command == "bye":
+        response = "Goodbye! Let me know if you need anything else."
     elif command == "kill":
         response = "Stopping the program. Goodbye!"
     else:
