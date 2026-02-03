@@ -1,3 +1,9 @@
+import os
+# Must be set before importing transformers to disable auto-conversion threads
+os.environ.setdefault("HF_HUB_DISABLE_AUTO_CONVERT", "1")
+os.environ.setdefault("HF_HUB_DISABLE_AUTO_CONVERSION", "1")
+os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
+
 import pygame
 import math
 import sys
@@ -9,8 +15,10 @@ import queue
 from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
 from gtts import gTTS
-import os
+import tempfile
 from transformers import pipeline
+import transformers.safetensors_conversion as _st_convert
+import logging as py_logging
 from pydub import AudioSegment
 from pydub.playback import play
 import uuid
@@ -108,6 +116,14 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+py_logging.getLogger("werkzeug").setLevel(py_logging.ERROR)
+py_logging.getLogger("werkzeug").propagate = False
+py_logging.getLogger("huggingface_hub").setLevel(py_logging.ERROR)
+py_logging.getLogger("httpx").setLevel(py_logging.ERROR)
+py_logging.getLogger("transformers").setLevel(py_logging.ERROR)
+
+# Disable transformers auto-conversion thread
+_st_convert.auto_conversion = lambda *args, **kwargs: None
 
 # -------------------- Flask App Setup ---------------------#
 
@@ -119,6 +135,7 @@ nlp = pipeline(
     tokenizer="microsoft/deberta-base-mnli",
     framework="pt",
     device=device,
+    model_kwargs={"use_safetensors": False},
 )
 if device == 0:
     logger.info("NLP pipeline is using GPU.")
@@ -2139,17 +2156,43 @@ class CarRobot:
             pass
 
     def perform_tts(self, text):
+        temp_dir = os.path.join(os.getcwd(), "tmp_audio")
+        os.makedirs(temp_dir, exist_ok=True)
+        tempfile.tempdir = temp_dir
+        temp_file = os.path.join(temp_dir, f"response_{uuid.uuid4()}.mp3")
         try:
-            temp_file = f"response_{uuid.uuid4()}.mp3"
             tts = gTTS(text=text, lang="en")
             tts.save(temp_file)
             logger.info(f"TTS audio saved: {temp_file}")
-            snd = AudioSegment.from_mp3(temp_file)
-            play(snd)
-            os.remove(temp_file)
-            logger.info(f"Removed TTS audio file: {temp_file}")
-        except Exception as e:
-            logger.error(f"Error in perform_tts: {e}")
+            try:
+                if not pygame.mixer.get_init():
+                    pygame.mixer.init()
+                pygame.mixer.music.load(temp_file)
+                pygame.mixer.music.play()
+                while pygame.mixer.music.get_busy():
+                    time.sleep(0.1)
+                pygame.mixer.music.stop()
+                pygame.mixer.music.unload()
+                logger.info(f"TTS playback finished via pygame: {temp_file}")
+            except Exception:
+                logger.exception("pygame mixer playback failed, falling back to pydub")
+                snd = AudioSegment.from_mp3(temp_file)
+                play(snd)
+                logger.info(f"TTS playback finished via pydub: {temp_file}")
+        except Exception:
+            logger.exception("Error in perform_tts")
+        finally:
+            try:
+                if os.path.exists(temp_file):
+                    for _ in range(5):
+                        try:
+                            os.remove(temp_file)
+                            logger.info(f"Removed TTS audio file: {temp_file}")
+                            break
+                        except PermissionError:
+                            time.sleep(0.2)
+            except Exception:
+                logger.exception("Failed to remove TTS audio file")
 
     def run_flask_app(self):
         url = "http://127.0.0.1:5000/"
@@ -2704,17 +2747,43 @@ class Game:
             pass
 
     def perform_tts(self, text):
+        temp_dir = os.path.join(os.getcwd(), "tmp_audio")
+        os.makedirs(temp_dir, exist_ok=True)
+        tempfile.tempdir = temp_dir
+        temp_file = os.path.join(temp_dir, f"response_{uuid.uuid4()}.mp3")
         try:
-            temp_file = f"response_{uuid.uuid4()}.mp3"
             tts = gTTS(text=text, lang="en")
             tts.save(temp_file)
             logger.info(f"TTS audio saved as {temp_file}")
-            sound = AudioSegment.from_mp3(temp_file)
-            play(sound)
-            os.remove(temp_file)
-            logger.info(f"TTS audio file {temp_file} removed after playback.")
-        except Exception as e:
-            logger.error(f"Error in perform_tts: {e}")
+            try:
+                if not pygame.mixer.get_init():
+                    pygame.mixer.init()
+                pygame.mixer.music.load(temp_file)
+                pygame.mixer.music.play()
+                while pygame.mixer.music.get_busy():
+                    time.sleep(0.1)
+                pygame.mixer.music.stop()
+                pygame.mixer.music.unload()
+                logger.info(f"TTS playback finished via pygame: {temp_file}")
+            except Exception:
+                logger.exception("pygame mixer playback failed, falling back to pydub")
+                sound = AudioSegment.from_mp3(temp_file)
+                play(sound)
+                logger.info(f"TTS playback finished via pydub: {temp_file}")
+        except Exception:
+            logger.exception("Error in perform_tts")
+        finally:
+            try:
+                if os.path.exists(temp_file):
+                    for _ in range(5):
+                        try:
+                            os.remove(temp_file)
+                            logger.info(f"TTS audio file {temp_file} removed after playback.")
+                            break
+                        except PermissionError:
+                            time.sleep(0.2)
+            except Exception:
+                logger.exception("Failed to remove TTS audio file")
 
     def run_flask_app(self):
         url = "http://127.0.0.1:5000/"
